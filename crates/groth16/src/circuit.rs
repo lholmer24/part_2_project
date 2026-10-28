@@ -5,25 +5,16 @@
 
 use ark_bls12_381::Fr;
 use ark_relations::gr1cs::{ConstraintSynthesizer, ConstraintSystemRef, SynthesisError};
+use mimc::MimcParams;
 
-/// MiMC parameters for one field and one round count.
-#[derive(Clone, Debug)]
-pub struct MimcParams {
-    /// Number of rounds, r.
-    pub rounds: usize,
-    /// Round-function exponent, e, with gcd(e, q - 1) = 1.
-    pub exponent: u64,
-    /// Encryption key, k.
-    pub key: Fr,
-    /// Round constants c_0, ..., c_{r-1}.
-    pub round_constants: Vec<Fr>,
-}
-
-/// Statement: knowledge of `preimage` such that `E_k(preimage) + preimage = hash`.
+/// Groth16 circuit for the MiMC preimage statement.
+///
+/// The parameter layout is shared through [`MimcParams`]. This local wrapper
+/// exists because `ConstraintSynthesizer` is implemented once per system.
 #[derive(Clone, Debug)]
 pub struct MimcPreimageCircuit {
     /// MiMC parameters shared by setup and proving.
-    pub params: MimcParams,
+    pub params: MimcParams<Fr>,
     /// Public hash, h.
     pub hash: Fr,
     /// Private preimage, x. `None` during setup.

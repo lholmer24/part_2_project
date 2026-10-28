@@ -8,3 +8,4 @@ publish.workspace = true
 
 [dependencies]
 halo2_proofs.workspace = true
+mimc.workspace = true

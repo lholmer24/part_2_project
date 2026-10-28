@@ -8,3 +8,4 @@ publish.workspace = true
 
 [dependencies]
 spartan_lib.workspace = true
+mimc.workspace = true

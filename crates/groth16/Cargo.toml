@@ -16,3 +16,4 @@ ark-r1cs-std.workspace = true
 ark-serialize.workspace = true
 ark-snark.workspace = true
 ark-std.workspace = true
+mimc.workspace = true

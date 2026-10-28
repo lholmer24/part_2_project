@@ -418,6 +418,7 @@ name = "bulletproofs"
 version = "0.1.0"
 dependencies = [
  "bulletproofs 2.0.0",
+ "mimc",
 ]
 
 [[package]]
@@ -963,6 +964,7 @@ dependencies = [
  "ark-serialize",
  "ark-snark",
  "ark-std",
+ "mimc",
 ]
 
 [[package]]
@@ -992,6 +994,7 @@ name = "halo2"
 version = "0.1.0"
 dependencies = [
  "halo2_proofs",
+ "mimc",
 ]
 
 [[package]]
@@ -1257,6 +1260,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "mimc"
+version = "0.1.0"
+
+[[package]]
 name = "miniz_oxide"
 version = "0.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1362,6 +1369,7 @@ name = "plonk"
 version = "0.1.0"
 dependencies = [
  "dusk-plonk",
+ "mimc",
 ]
 
 [[package]]
@@ -1722,6 +1730,7 @@ checksum = "d0d5d4b1981b8bbbb7aed204cae5726d683d5d6ac7e74ec54122ea28f315e7c8"
 name = "spartan"
 version = "0.1.0"
 dependencies = [
+ "mimc",
  "spartan 0.9.0",
 ]
 
@@ -1755,6 +1764,7 @@ checksum = "3763264f6b73151db08c50ff20d7d8a0b8796e021cdea7ceedad07b80155fa0e"
 name = "stark"
 version = "0.1.0"
 dependencies = [
+ "mimc",
  "winterfell",
 ]
 

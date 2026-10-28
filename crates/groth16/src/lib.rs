@@ -10,7 +10,8 @@ use ark_groth16::{Groth16, PreparedVerifyingKey, Proof, ProvingKey, VerifyingKey
 use ark_relations::gr1cs::SynthesisError;
 use ark_std::rand::Rng;
 
-pub use circuit::{MimcParams, MimcPreimageCircuit};
+pub use circuit::MimcPreimageCircuit;
+pub use mimc::MimcParams;
 
 /// The concrete Groth16 instantiation used by this crate.
 pub type Groth16Bls12_381 = Groth16<Bls12_381>;
@@ -26,7 +27,10 @@ pub struct Groth16Params {
 }
 
 /// Run the circuit-specific trusted setup for a fixed MiMC parameter set.
-pub fn setup(_params: MimcParams, _rng: &mut impl Rng) -> Result<Groth16Params, SynthesisError> {
+pub fn setup(
+    _params: MimcParams<Fr>,
+    _rng: &mut impl Rng,
+) -> Result<Groth16Params, SynthesisError> {
     todo!("run the Groth16 trusted setup")
 }
 
