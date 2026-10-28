@@ -1,0 +1,10 @@
+[package]
+name = "spartan"
+description = "Spartan proof of knowledge of a MiMC preimage over Ristretto255"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+spartan_lib.workspace = true

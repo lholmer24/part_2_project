@@ -1,0 +1,35 @@
+[workspace]
+resolver = "2"
+members = ["crates/*"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.98"
+publish = false
+
+[workspace.dependencies]
+# arkworks 0.6 is the current release line. Exact versions are pinned here and
+# transitively by the committed Cargo.lock. The `parallel` feature is disabled
+# everywhere because the benchmark runs single-threaded.
+ark-bls12-381 = { version = "=0.6.0", default-features = false, features = ["curve", "std"] }
+ark-ec = { version = "=0.6.0", default-features = false, features = ["std"] }
+ark-ff = { version = "=0.6.0", default-features = false, features = ["std"] }
+ark-groth16 = { version = "=0.6.0", default-features = false, features = ["r1cs", "std"] }
+ark-relations = { version = "=0.6.0", default-features = false, features = ["std"] }
+ark-r1cs-std = { version = "=0.6.0", default-features = false, features = ["std"] }
+ark-serialize = { version = "=0.6.0", default-features = false, features = ["std"] }
+ark-snark = { version = "=0.6.0", default-features = false }
+ark-std = { version = "=0.6.0", default-features = false, features = ["std"] }
+
+# The remaining systems use exact versions. `dusk-plonk` uses `alloc` rather
+# than `std` because its `std` feature enables rayon; the other crates keep
+# their single-threaded feature sets.
+dusk-plonk = { version = "=0.24.0", default-features = false, features = ["alloc"] }
+winterfell = { version = "=0.13.1", default-features = false, features = ["std"] }
+halo2_proofs = { version = "=0.4.1", default-features = false, features = ["batch"] }
+spartan_lib = { package = "spartan", version = "=0.9.0", default-features = false, features = ["std"] }
+
+# The R1CS API of bulletproofs is not in a published release. It is on the
+# `develop` branch behind the `yoloproofs` feature, so pin an exact commit.
+bulletproofs_lib = { package = "bulletproofs", git = "https://github.com/dalek-cryptography/bulletproofs.git", rev = "464acb72432ccc6c5131397fd811a5f01ec2454b", default-features = false, features = ["std", "yoloproofs"] }
