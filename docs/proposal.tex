@@ -1,0 +1,222 @@
+\documentclass[11pt,a4paper]{article}
+
+% ---------------------------------------------------------------
+% Part II Project Proposal Template
+% Department of Computer Science and Technology, University of Cambridge
+% Based on: https://www.cst.cam.ac.uk/teaching/part-ii/projects/project-proposal
+% ---------------------------------------------------------------
+
+\usepackage[margin=2.5cm]{geometry}
+\usepackage{parskip}
+\usepackage{titlesec}
+\usepackage{enumitem}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{multirow}
+\usepackage{longtable}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{array}
+\usepackage{hyperref}
+\hypersetup{colorlinks=true, linkcolor=blue, urlcolor=blue}
+
+
+\titleformat{\section}{\large\bfseries}{\thesection}{1em}{}
+\titleformat{\subsection}{\normalsize\bfseries}{\thesubsection}{1em}{}
+
+\begin{document}
+
+% -----------------------------------------------------------
+% Cover / details block
+% -----------------------------------------------------------
+\begin{center}
+    {\LARGE \textbf{Part II Project Proposal}}\\[1em]
+    {\Large Who Knows? A Comparison of Zero-Knowledge Proof Systems}\\[2em]
+    {\large Laughlin Holmer (lah202), Churchill College}\\[1em]
+\end{center}
+
+\vspace{1em}
+
+% -----------------------------------------------------------
+\section{Introduction}
+% Explain the background to the work you propose to do and the objectives
+% you expect to achieve. Give details of specific goals to be achieved and
+% precise characterisations of the methods that will be used. Identify the
+% main sub-tasks that make up your complete project and outline the
+% algorithms or techniques to be adopted in completing them.
+
+Zero-knowledge proofs (ZKPs) provide the ability for one party (the prover) to convince another party (the verifier) of the truth of some statement, without revealing any private information. As of now, ZKPs have been used primarily for cryptocurrencies and on blockchains, but are increasingly being applied in other use cases such as verifiable distributed computation and privacy-preserving proofs of age.
+
+A wide range of ZKP systems have been developed, each offering different tradeoffs. To build large systems using ZKPs, it is crucial to understand the relative performance and setup requirements. On-chain usage necessitates small proof sizes, whereas embedded implementations need lower computation and memory requirements. Therefore, the aim of this project is to answer: For a proof of a fixed statement, how do major ZKP systems trade off proof size, proof runtime, verification runtime, and setup restrictions?
+
+The statement that each system will prove is knowledge of the preimage of the MiMC hash function. MiMC is defined as $r$ rounds of applying $F_i(x) = (x + k + c_i)^e$ over some finite field $\mathbb{F}_q$, where $e$ is an integer such that $x^e$ is a permutation on $\mathbb{F}_q$, $k$ is the encryption key and $c_i \in \mathbb{F}_q$ is a fixed randomly chosen round constant. The final output of the MiMC hash is $E_k(x) =(F_{r-1} \circ F_{r-2} \circ \cdots \circ F_0)(x) + k$. The proven statement is that I know some witness $x$ such that $E_k(x) + x = h$, where $h$ is public.
+
+The workload of the statement being proven grows with $r$, since each round adds a fixed number of multiplications. Each library reports this as a measurable size (R1CS constraints, PLONK gates or AIR trace rows), so by varying $r$ I can correlate measured workload with prover time, verifier time and proof size across a representative range of statements.
+
+The following ZKP systems will be evaluated:
+
+\begin{table}[h]
+\centering
+\small
+\renewcommand{\arraystretch}{1.1}
+\setlength{\tabcolsep}{5pt}
+\begin{tabularx}{\textwidth}{@{}l >{\raggedright\arraybackslash\hsize=1.3\hsize}X >{\raggedright\arraybackslash\hsize=0.7\hsize}X l l@{}}
+\toprule
+\textbf{System} & \textbf{Structure} & \textbf{Scalar field} & \textbf{Crate} & \textbf{License} \\
+\midrule
+\multicolumn{5}{@{}l}{\textit{Core}} \\
+\addlinespace[2pt]
+Groth16      & R1CS; pairing-based; trusted setup per circuit & BLS12-381 scalar (255-bit) & \href{https://github.com/arkworks-rs/groth16}{\texttt{ark-groth16}} & Apache-2.0/MIT \\
+\addlinespace[3pt]
+PLONK        & PLONK + KZG; universal trusted setup & BLS12-381 scalar (255-bit) & \href{https://github.com/dusk-network/plonk}{\texttt{dusk-plonk}} & MPL-2.0 \\
+\addlinespace[3pt]
+Bulletproofs & R1CS + inner-product argument; transparent & Ristretto255 scalar (253-bit) & \href{https://github.com/dalek-cryptography/bulletproofs}{\texttt{bulletproofs}} & MIT \\
+\addlinespace[3pt]
+STARK        & AIR + FRI (hash-based); transparent & 62- or 128-bit prime & \href{https://github.com/facebook/winterfell}{\texttt{winterfell}} & MIT \\
+\addlinespace[3pt]
+\midrule
+\multicolumn{5}{@{}l}{\textit{Extensions}} \\
+\addlinespace[2pt]
+Halo2        & PLONKish + inner-product argument; transparent & Pasta scalar (255-bit) & \href{https://github.com/zcash/halo2}{\texttt{halo2\_proofs}} & Apache-2.0/MIT \\
+\addlinespace[3pt]
+Spartan      & R1CS + Spartan, Hyrax-style commitment; transparent & Ristretto255 scalar (253-bit) & \href{https://github.com/microsoft/Spartan}{\texttt{spartan}} & MIT \\
+\addlinespace[3pt]
+\bottomrule
+\end{tabularx}
+\end{table}
+
+The core systems span a range of techniques, offering wide coverage of the space of ZKPs. Halo2 and Spartan are extensions because they are variants of families already covered by the core: Halo2 uses the same PLONKish arithmetisation as PLONK, and Spartan proves R1CS statements as Groth16 and Bulletproofs do. They would add data points to the comparison, not new arithmetisations. Each system has an existing Rust crate, enabling an even ground for implementation and benchmarking. A further possible extension is to investigate and prove other statements on the core systems, to test whether the comparison depends on the statement being proven. 
+
+% -----------------------------------------------------------
+\section{Starting Point}
+% State any prior work, code, libraries, courses, or knowledge you are
+% building on. If you have already done significant work relevant to the
+% project (e.g. existing code), it must be declared here.
+
+I have done no existing work for this project. I have never written substantial code in Rust nor have I implemented a ZKP. To prepare for the project proposal I have read sections of \href{https://people.cs.georgetown.edu/jthaler/ProofsArgsAndZK.pdf}{Proof, Arguments, and Zero Knowledge} by Justin Thaler. I will implement the MiMC reference code, the circuit encoding for each proof system, the benchmarking harness and the analysis scripts myself. I will use existing open-source implementations of the proof systems themselves (the crates in the table), together with \texttt{criterion.rs} and \texttt{matplotlib}, and I will not copy existing MiMC circuits. All other submitted software will be original.
+
+% -----------------------------------------------------------
+\section{Project Structure}
+% Describe the key concepts, major work items, their relations and relative
+% importance, and the data structures and algorithms you expect to use.
+
+The structure will consist of a Rust project containing different proof implementations, each of which will have a proof generator and verifier for knowledge of MiMC preimage. 
+
+As a shared core, the MiMC hash function must be translated to an arithmetic circuit over a finite field. The circuit is a DAG in which each node is a single arithmetic operation. The basic structure of the circuit can be reused across all proof systems.
+
+Groth16, Bulletproofs, and Spartan will require the circuit to then be translated to a Rank 1 Constraint System (R1CS).
+
+PLONK and Halo2 will require the circuit to be translated to systems of custom gates; these implementations will be similar but not directly reusable.
+
+STARK will require an Algebraic Intermediate Representation (AIR).
+
+I will write each MiMC circuit myself against the constraint API of the relevant crate.
+
+For a given round count $r$, the private witness $x$, the key $k$ (a fixed public constant), the exponent $e$ and the round constants $c_i$ are the same for every system. The crates use different scalar fields, so I choose $x$, $k$ and each $c_i$ as valid integers in each field, and I choose $e$ so that $x \mapsto x^e$ is a permutation in each field. MiMC is computed natively in each system's scalar field, so no circuit performs non-native (emulated) field arithmetic. The public hash $h$ is the output of MiMC in each system's field, so its value differs between systems. Each system outputs a proof that the verifier accepts or rejects. Every benchmarked proof is valid and is accepted, so the only variables are the proof system and $r$.
+
+There will also be a generic benchmarking harness, and an auxiliary Python project parsing the benchmark outputs and rendering data visualizations.
+
+% -----------------------------------------------------------
+\section{Success Criteria and Evaluation Plan}
+% Explain how you will demonstrate that the success criteria have been met:
+% performance measurements, correctness tests, experiments with human
+% subjects, comparisons with alternative approaches, formal proofs, etc.
+
+The project will be deemed successful if each core proof system is capable of generating a valid zero-knowledge proof object that is accepted by the verifier. The verifier must not accept invalid proofs. The benchmarking harness must then be able to measure the proof and verification runtimes for each system.
+
+The proof systems themselves will be evaluated with objective runtime benchmarks and proof sizes will be measured. To maintain a fair baseline for evaluation, each system will be run on the same hardware and in the same environment. Each proof will be run single-threaded. The same compilation flags will be used across all systems. Each system will be configured for a security level of at least 100 bits. To check that my implementations add no avoidable work, I will compare the constraint, gate or trace-row count of each circuit against the count I expect from the round structure.
+
+Furthermore, I will provide a qualitative comparison of the setup requirements of each system (trusted or transparent, circuit-specific or universal) and of their post-quantum security.
+
+%-----------------------------------------------------------
+\section{Plan of Work}
+% Break the project into work packages of at most two weeks each. Each
+% package should have a concrete due date (e.g. "10 November") and a
+% clearly defined, measurable deliverable. Include preparatory work,
+% implementation, evaluation, and dissertation writing. Remember to leave
+% buffer time and account for lecture/coursework load.
+
+\newcommand{\wpkg}[5]{%
+  \par\medskip\noindent\textbf{WP#1: #2}\hfill\textit{#3}\par\nobreak\smallskip
+  \noindent\textbf{Work.} #4\par
+  \noindent\textbf{Deliverable.} #5\par}
+
+\wpkg{1}{Foundations, workspace and parameter choice}{2 Oct -- 16 Oct 2026}
+{Read the introductory ZKP material, covering completeness, soundness, zero-knowledge, public versus private inputs, and arithmetisation into R1CS. Create the Rust workspace on the University GitLab instance with all crate versions pinned. Record the scalar field and security parameters used by each system. Choose the round-function exponent $e$ so that $\gcd(e, q-1) = 1$ for every field, since $x \mapsto x^e$ must be a permutation. Choose the round counts.}
+{(a) A workspace where \texttt{cargo build} succeeds and a committed \texttt{Cargo.lock} pins all dependencies. (b) A committed \texttt{PARAMS.md} with a table giving system, crate, field, $\gcd(e, q-1)$, the chosen $e$ and round counts, and the security parameters and estimated security level of each system.}
+
+\wpkg{2}{Reference MiMC and benchmark harness}{16 Oct -- 30 Oct 2026}
+{Implement MiMC in plain Rust and Python, parameterised on round count and field modulus. Build the generic benchmark harness: a common trait for setup, prove and verify, with \texttt{criterion.rs} timing and CSV output.}
+{(a) A \texttt{cargo test} that passes, checking the Rust and Python MiMC implementations agree on at least 100 random inputs at every chosen round count, in the field of each system. (b) The harness runs against a placeholder proof system and writes a CSV with the columns proof size, prover time, verifier time and setup time.}
+
+\wpkg{3}{Groth16}{30 Oct -- 13 Nov 2026}
+{Read the Groth16 paper. Encode the MiMC preimage statement as an R1CS circuit using \texttt{ark-groth16} and plug it into the harness.}
+{\texttt{cargo test} passes, showing that, with the public hash computed by the reference implementation from WP2, (a) a valid proof is accepted at every chosen round count, (b) a proof checked against a wrong public hash is rejected, (c) a proof with one byte altered is rejected, and (d) the constraint count equals the count expected from the round structure. The harness CSV contains Groth16 rows for every round count.}
+
+\wpkg{4}{Bulletproofs}{13 Nov -- 27 Nov 2026}
+{Read the Bulletproofs paper. Implement the MiMC preimage statement using the R1CS interface of the \texttt{bulletproofs} crate and plug it into the harness.}
+{The same four tests as WP3 pass for Bulletproofs. The harness CSV contains Bulletproofs rows for every round count.}
+
+\wpkg{5}{PLONK}{27 Nov -- 11 Dec 2026}
+{Read the PLONK paper. Design the custom-gate layout for one MiMC round. Implement the circuit with \texttt{dusk-plonk} and plug it into the harness.}
+{The same four tests as WP3 pass for PLONK. The harness CSV contains PLONK rows for every round count.}
+
+\wpkg{6}{STARK: reading, AIR design and prototype}{11 Dec -- 25 Dec 2026}
+{Read about STARKs and AIR. Design the AIR for MiMC (trace layout and transition constraints). Implement a first version with \texttt{winterfell}.}
+{A \texttt{winterfell} prototype that generates a proof accepted by its verifier at the smallest chosen round count.}
+
+\wpkg{7}{Slack over Christmas: complete STARK}{25 Dec 2026 -- 8 Jan 2027}
+{This package is reduced-load. Close any outstanding WP1--6 deliverables first. Then extend the STARK implementation to all round counts and plug it into the harness.}
+{(a) Every deliverable from WP1--6 is met. (b) The same four tests as WP3 pass for STARK. (c) The harness CSV contains rows for all four core systems at every round count.}
+
+\wpkg{8}{Core results and slack}{8 Jan -- 22 Jan 2027}
+{Any unmet deliverable from WP1--7 takes priority. Then run the full benchmark on all four core systems with no other load on the machine, and write the Python analysis scripts.}
+{(a) A committed dataset of 4 systems $\times$ all round counts with at least 10 samples per configuration. (b) Python scripts that regenerate at least three figures (prover time, verifier time and proof size against round count) from that dataset with one command. When this package is met, the core success criteria are met.}
+
+\wpkg{9}{Progress report and Extension: Spartan}{22 Jan -- 5 Feb 2027}
+{Write the progress report. Read the Spartan paper. Implement the MiMC preimage statement with \texttt{spartan}. Plug it into the harness.}
+{(a) The progress report submitted by 5 Feb. (b) Either Spartan passes the same four accept/reject tests with rows in the CSV, or a note in the repository records why Spartan was dropped.}
+
+\wpkg{10}{Slack and Extension: Halo2}{5 Feb -- 19 Feb 2027}
+{Any unmet deliverable from WP1--9 takes priority. If the core is complete, implement the circuit with \texttt{halo2\_proofs}, reusing the custom-gate design from WP5 where possible, and plug it into the harness.}
+{Either Halo2 passes the same four accept/reject tests with rows in the CSV, or a note in the repository records why Halo2 was dropped. If any core deliverable is still unmet, finishing it is the deliverable.}
+
+\wpkg{11}{Progress presentation and Extension: memory measurement}{19 Feb -- 5 Mar 2027}
+{Prepare and deliver the progress presentation first (due 26 Feb). Then extend the harness to record peak resident memory for the prover and verifier, running each configuration in a fresh process.}
+{(a) The presentation delivered by 26 Feb, with slides on GitLab. (b) A peak-memory column present in the CSV for every integrated system and round count.}
+
+\wpkg{12}{Dissertation: Introduction and Preparation}{5 Mar -- 19 Mar 2027}
+{Write the Introduction (about 3 pages) and Preparation (about 10 pages). Preparation covers the ZKP background, the statement, the arithmetisations and the field checks.}
+{Both chapters compile in the dissertation LaTeX template and are committed to GitLab.}
+
+\wpkg{13}{Dissertation: Implementation, and freeze the results}{19 Mar -- 2 Apr 2027}
+{Re-run the final benchmarks and freeze the data. Write the Implementation chapter (about 15 pages), covering the shared MiMC core, the per-system circuit encodings and the harness.}
+{A git tag \texttt{results-final} marking the frozen dataset and figures. The Implementation chapter compiles and is committed.}
+
+\wpkg{14}{Dissertation: Evaluation and Conclusion (draft 1)}{2 Apr -- 16 Apr 2027}
+{Write the Evaluation chapter (about 18 pages) from the frozen data: results, comparison against the research question, threats to validity and the extension results that were completed. Write the Conclusion (about 2 pages).}
+{A complete first draft of the whole dissertation, compiled to PDF, sent to my supervisors and Director of Studies by 16 Apr.}
+
+\wpkg{15}{Dissertation: revision 1}{16 Apr -- 30 Apr 2027}
+{Incorporate all feedback on draft 1 and check the figures, references and appendices. Fix any code issues raised.}
+{Draft 2, sent to my supervisors and Director of Studies by 30 Apr.}
+
+\wpkg{16}{Dissertation: revision 2 and submission}{30 Apr -- 14 May 2027}
+{Incorporate the feedback on draft 2, proofread the whole dissertation, and tidy the repository and README.}
+{The dissertation and source code are submitted by the 14 May 2027 deadline.}
+% -----------------------------------------------------------
+\section{Resource Declaration}
+% List all resources required for the project (own machine, department
+% accounts, HPC/GPU, third-party data/software, door entry, etc.) and give
+% contact details for anyone responsible for their availability. Include
+% the required statement about personal machines if applicable.
+
+I will be relying on the Rust crates listed in the introduction, as well as \href{https://github.com/bheisler/criterion.rs}{\texttt{criterion.rs}} (Apache 2.0, MIT) for benchmarking. I will also use Python and \href{https://github.com/matplotlib/matplotlib}{\texttt{matplotlib}} (BSD-style license) for data visualization in the final report. As a consequence, I will rely on the Rust compiler, a Python interpreter, and the respective language ecosystems. The R1CS API of the \texttt{bulletproofs} crate is experimental and absent from the published release, so I will depend on a pinned git commit of its \texttt{develop} branch.
+
+I will implement and benchmark the proof systems on my personal laptop, a Framework 13 with an AMD Ryzen 5 7640U running Arch Linux. If it should fail I am capable of repairing it myself, and in a worst case scenario, I can purchase another with minimal lead time and restore all project data from backups, relying on college provided desktops in the meantime.
+
+I accept full responsibility for this machine and I have made contingency plans to protect myself against hardware and/or software failure.
+
+I will be using the University hosted GitLab instance for version control and as a backup.
+
+\end{document}
