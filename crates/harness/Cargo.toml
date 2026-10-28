@@ -1,0 +1,16 @@
+[package]
+name = "harness"
+description = "Generic benchmark harness for the MiMC preimage statement"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+mimc.workspace = true
+groth16 = { path = "../groth16" }
+plonk = { path = "../plonk" }
+bulletproofs = { path = "../bulletproofs" }
+stark = { path = "../stark" }
+halo2 = { path = "../halo2" }
+spartan = { path = "../spartan" }
