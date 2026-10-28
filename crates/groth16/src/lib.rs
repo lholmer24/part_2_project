@@ -1,7 +1,6 @@
 //! Groth16 proof of knowledge of a MiMC preimage over BLS12-381.
 //!
-//! This crate is a scaffold. The MiMC parameter choice and the constraint
-//! encoding are core project work and are intentionally left unimplemented.
+//! Not done yet.
 
 pub mod circuit;
 

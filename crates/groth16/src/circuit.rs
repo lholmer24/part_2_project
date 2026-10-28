@@ -1,7 +1,6 @@
 //! The MiMC preimage statement as a Groth16 constraint system.
 //!
-//! Skeleton only. The constraint encoding is core project work and is
-//! intentionally left as `todo!()`.
+//! Not done yet.
 
 use ark_bls12_381::Fr;
 use ark_relations::gr1cs::{ConstraintSynthesizer, ConstraintSystemRef, SynthesisError};

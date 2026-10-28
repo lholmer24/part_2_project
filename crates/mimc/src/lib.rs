@@ -1,7 +1,6 @@
 //! Shared MiMC support for every proof system.
 //!
-//! Skeleton only. The reference hash, field adapters, round-constant loader and
-//! cross-language test vectors are part of the MiMC work package.
+//! Not done yet.
 
 /// MiMC parameters for one field and one round count.
 #[derive(Clone, Debug)]
@@ -14,4 +13,9 @@ pub struct MimcParams<F> {
     pub key: F,
     /// Round constants c_0, ..., c_{r-1}.
     pub round_constants: Vec<F>,
+}
+
+/// Compute `E_k(x)` for the given MiMC parameters.
+pub fn hash<F>(_params: &MimcParams<F>, _x: F) -> F {
+    todo!("MiMC hash is not done yet")
 }

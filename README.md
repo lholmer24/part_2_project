@@ -37,8 +37,7 @@ cargo fmt --all -- --check
 python3 python/generate_round_constants.py
 ```
 
-The proof crates and the harness are skeletons. The MiMC core, circuits,
-harness and analysis are the core project work.
+The proof crates, MiMC core, harness and analysis are not done yet.
 
 ## Parameters
 
