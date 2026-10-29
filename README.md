@@ -34,10 +34,24 @@ cargo test
 cargo clippy --all-targets
 cargo fmt --all -- --check
 
-python3 python/generate_round_constants.py
+cd python
+.venv/bin/python -m pytest
+.venv/bin/python -m mimc --field bls12_381_fr --rounds 8 --x 42
 ```
 
-The proof crates, MiMC core, harness and analysis are not done yet.
+The Python virtualenv lives in `python/.venv` and is not committed. Recreate it
+with:
+
+```sh
+cd python
+python3 -m venv .venv
+.venv/bin/pip install -e '.[dev]'
+```
+
+`python3 python/generate_round_constants.py` regenerates the committed round
+constants.
+
+The Rust MiMC core, proof crates, harness and analysis are not done yet.
 
 ## Parameters
 

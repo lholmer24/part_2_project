@@ -1,7 +1,7 @@
 # Parameters
 
 MiMC uses the native scalar field of each system. The statement is knowledge of
-`x` such that `E_k(x) + x = h`.
+`x` such that `E(x) + x = h`.
 
 | System | Crate | Field | `gcd(e, q-1)` | `e` | Round counts | Security parameters | Estimated security |
 |:---|:---|:---|:---:|:---:|:---|:---|:---|
@@ -13,3 +13,6 @@ MiMC uses the native scalar field of each system. The statement is knowledge of
 | Spartan | `spartan` 0.9.0 | Ristretto255 scalar | 1 | 5 | `2^k`, `k=0..15` | 253-bit group | ~126-bit classical |
 
 `e = 5` is coprime to `q - 1` in every row, so `x -> x^5` is a permutation.
+
+The round function is `F_i(x) = (x + c_i)^5`, `E(x) = (F_{r-1} o ... o F_0)(x)`,
+and the public hash is `E(x) + x`.
