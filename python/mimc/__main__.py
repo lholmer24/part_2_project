@@ -3,9 +3,6 @@
 Examples:
     python -m mimc --field bls12_381_fr --rounds 8 --x 42
     python -m mimc --field pasta_fp --rounds 1024 --x 0xff
-
-The MiMC core is not implemented yet, so this exits with
-``NotImplementedError`` until :func:`mimc.mimc_hash` has a body.
 """
 
 from __future__ import annotations

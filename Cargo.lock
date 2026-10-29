@@ -1277,6 +1277,15 @@ dependencies = [
 [[package]]
 name = "mimc"
 version = "0.1.0"
+dependencies = [
+ "ark-bls12-381",
+ "ark-ff",
+ "curve25519-dalek 3.2.0",
+ "curve25519-dalek 4.1.3",
+ "ff 0.14.0",
+ "pasta_curves",
+ "winter-math",
+]
 
 [[package]]
 name = "miniz_oxide"

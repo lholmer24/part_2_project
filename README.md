@@ -31,6 +31,7 @@ Spartan on a MiMC preimage statement.
 ```sh
 cargo build
 cargo test
+cargo test -p mimc --features extended-tests   # full sweep + Rust/Python agreement
 cargo clippy --all-targets
 cargo fmt --all -- --check
 
@@ -51,7 +52,7 @@ python3 -m venv .venv
 `python3 python/generate_round_constants.py` regenerates the committed round
 constants.
 
-The Rust MiMC core, proof crates, harness and analysis are not done yet.
+The proof crates, harness and analysis are not done yet.
 
 ## Parameters
 

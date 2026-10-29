@@ -66,9 +66,3 @@ def test_hash_is_deterministic(field: str, rounds: int) -> None:
 def test_hash_depends_on_input(field: str, rounds: int) -> None:
     params = load_params(field, rounds)
     assert mimc_hash(params, 0) != mimc_hash(params, 1)
-
-
-@pytest.mark.skip(reason="Rust reference not done yet")
-def test_rust_and_python_agree() -> None:
-    """Compare against vectors produced by ``crates/mimc``."""
-    raise NotImplementedError
