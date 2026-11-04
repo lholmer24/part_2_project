@@ -18,7 +18,7 @@ Spartan on a MiMC preimage statement.
 | `params/PARAMS.md` | Field, exponent, round-count and security parameters |
 | `params/round_constants/` | Generated round constants, one file per field |
 | `python/` | Python MiMC reference, constant generator and analysis |
-| `results/` | Benchmark CSV output |
+| `results/` | Benchmark CSV and metadata output |
 | `docs/` | Proposal and dissertation material |
 
 ## Requirements
@@ -63,9 +63,10 @@ Halo2, Spartan and the analysis are not done yet. The harness writes
 Setup, proving and verification are timed separately. For each system and round
 count, the harness runs:
 
-1. `--setup-samples` timed setups, if the system has a setup phase.
-2. `--warmup` untimed prove/verify pairs.
-3. `--samples` timed prove/verify pairs.
+1. An untimed preparation step: constants, circuit and witness data.
+2. `--setup-samples` timed setups, if the system has a setup phase.
+3. `--warmup` untimed prove/verify pairs.
+4. `--samples` timed prove/verify pairs.
 
 The CSV has one row per timed phase repetition:
 
@@ -82,6 +83,16 @@ system,field,rounds,phase,sample,time_ns,proof_size_bytes
 Universal parameters that are reused across configurations are generated
 outside the sweep and reported separately. The CSV records only measured data;
 the paper explains the setup type and phase boundaries for each system.
+
+Phase boundaries for Groth16:
+
+- Preparation, untimed: load the round constants and compute the reference hash.
+- Setup, timed: circuit synthesis plus key generation.
+- Prove, timed: circuit synthesis, witness construction and proof generation.
+- Verify, timed: verification only. Proof deserialisation is outside the timer.
+
+See `docs/timing-plan.md` for the exact timed and untimed segments of every
+system. Circuit synthesis is counted as measured work throughout.
 
 The harness also writes `<name>.meta.json` next to the CSV. It records the
 timestamp, git commit, build profile, host, CPU, systems, round counts and

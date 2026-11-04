@@ -1,0 +1,162 @@
+# Timing boundaries
+
+This document fixes what the benchmark times and what it excludes. The goal is
+to compare implementations of the proof systems, so all work needed to produce,
+prove and verify a statement is measured, including our circuit synthesis and
+witness construction.
+
+## Principles
+
+1. Time the work needed to run each system, including circuit synthesis,
+   constraint construction, witness generation and trace generation.
+2. Exclude only I/O, reference hashing, universal parameter generation, proof
+   serialisation and proof deserialisation.
+3. Time setup, proving and verification with separate timers.
+4. Generate universal, reusable parameters once at the largest size, outside
+   the per-configuration sweep. Report them separately, not as per-round setup.
+5. Run every measurement single-threaded.
+
+## Common phases
+
+| Phase | Timed | Untimed |
+|:---|:---|:---|
+| Prepare | No | Load round constants, compute the reference hash, load universal parameters |
+| Setup | Yes | Circuit synthesis, constraint encoding, instance encoding, library key generation or preprocessing |
+| Prove | Yes | Circuit synthesis, witness or trace construction, library prover |
+| Verify | Yes | Library verifier only |
+| Proof size | No | Serialisation after the prove timer stops |
+
+The reference hash is a statement input, not a proof-system operation. It is
+computed once in prepare. Circuit synthesis is part of the measured work.
+
+## Universal parameters
+
+| System | Universal artefact | Handling |
+|:---|:---|:---|
+| Groth16 | None | Circuit-specific trusted setup |
+| PLONK | KZG public parameters | Build once at maximum degree; exclude from per-round setup |
+| Bulletproofs | Pedersen and Bulletproof generators | Build once at maximum size; exclude from per-round setup |
+| STARK | None | No setup |
+| Halo2 | IPA `Params` | Build once at maximum `k`; exclude from per-round setup |
+| Spartan | `SNARKGens` | Build once at maximum size; exclude from per-round setup |
+
+The one-time universal cost is reported in the text, not in the per-round CSV.
+
+## Groth16
+
+Library: `ark-groth16` 0.6 over BLS12-381.
+
+| Segment | Boundary |
+|:---|:---|
+| Untimed prepare | `MimcParams::load`, `mimc::hash` |
+| Timed setup | `Groth16::generate_random_parameters_with_reduction`: circuit synthesis plus key generation |
+| Timed prove | `Groth16::create_random_proof_with_reduction`: circuit synthesis, witness construction and proof generation |
+| Timed verify | `Groth16::verify_proof` |
+| Untimed | Proof serialisation and size measurement |
+
+## PLONK
+
+Library: `dusk-plonk` 0.24 over BLS12-381.
+
+| Segment | Boundary |
+|:---|:---|
+| Untimed prepare | `MimcParams::load`, `mimc::hash` |
+| Universal, once | `PublicParameters::setup(max_degree)` |
+| Timed setup | `Compiler::compile_with_circuit` or `Prover::compile`: circuit synthesis plus compilation |
+| Timed prove | `Prover::prove`: circuit synthesis plus proof generation |
+| Timed verify | `Verifier::verify` |
+| Untimed | Proof serialisation and size measurement |
+
+## Bulletproofs
+
+Library: pinned `bulletproofs` develop revision, R1CS API.
+
+| Segment | Boundary |
+|:---|:---|
+| Untimed prepare | `MimcParams::load`, `mimc::hash` |
+| Universal, once | `PedersenGens` and `BulletproofGens::new` at maximum size |
+| Timed setup | None; Bulletproofs is transparent |
+| Timed prove | Constraint construction, witness commitments, and `Prover::prove` |
+| Timed verify | `R1CSProof::verify` |
+| Untimed | Proof serialisation and size measurement |
+
+The prover block starts before the constraint list is built and ends after
+`Prover::prove` returns. This includes our constraint construction by design.
+
+## STARK
+
+Library: `winterfell` 0.13 over `f128`.
+
+| Segment | Boundary |
+|:---|:---|
+| Untimed prepare | `MimcParams::load`, `mimc::hash`, proof options |
+| Timed setup | None; STARK is transparent |
+| Timed prove | AIR construction, trace generation, `Prover::prove(trace)` |
+| Timed verify | `verify(proof, public_inputs)` |
+| Untimed | Proof serialisation and size measurement |
+
+The AIR is circuit synthesis, so it is timed with the prover. Trace generation
+is part of proving and is also timed.
+
+## Halo2
+
+Library: `halo2_proofs` 0.4.1 over Pasta.
+
+| Segment | Boundary |
+|:---|:---|
+| Untimed prepare | `MimcParams::load`, `mimc::hash` |
+| Universal, once | `Params::new(k_max)` |
+| Timed setup | `keygen_vk` plus `keygen_pk`: circuit synthesis and key generation |
+| Timed prove | `create_proof`: circuit synthesis, witness assignment and proof generation |
+| Timed verify | `verify_proof` |
+| Untimed | Proof deserialisation and size measurement |
+
+## Spartan
+
+Library: `spartan` 0.9 over Ristretto255.
+
+| Segment | Boundary |
+|:---|:---|
+| Untimed prepare | `MimcParams::load`, `mimc::hash` |
+| Universal, once | `SNARKGens::new` at maximum size |
+| Timed setup | R1CS matrix construction plus `SNARK::encode` |
+| Timed prove | Witness assignment construction plus `SNARK::prove` |
+| Timed verify | `SNARK::verify` |
+| Untimed | Proof serialisation and size measurement |
+
+Spartan has no trusted setup. The timed setup row is the deterministic
+preprocessing: building the matrices and committing to the instance.
+
+## CSV meaning
+
+`phase=setup` means the timed per-circuit setup above. It includes circuit or
+instance synthesis, but not file loading, reference hashing or universal
+parameters.
+
+Systems with no per-circuit setup produce no `setup` rows:
+
+- Bulletproofs
+- STARK
+
+`proof_size_bytes` is recorded from the serialised proof after the prove timer
+stops.
+
+## Consistency
+
+Every system includes its own circuit, constraint, witness or trace synthesis in
+the timed phases. Systems whose libraries synthesise the circuit internally
+include that work automatically. Systems with explicit construction time the
+construction block.
+
+The phases therefore measure:
+
+- the project's circuit encoding,
+- the library's setup, prover and verifier,
+- the data transformation needed to call them.
+
+They exclude:
+
+- file I/O,
+- the reference MiMC hash,
+- universal parameters,
+- serialisation and deserialisation.

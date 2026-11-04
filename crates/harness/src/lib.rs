@@ -7,6 +7,10 @@
 //! system,field,rounds,phase,sample,time_ns,proof_size_bytes
 //! ```
 //!
+//! [`System::prepare`] runs once per configuration before any timer starts. Use
+//! it for file loading, reference hashing and universal parameters. Circuit
+//! synthesis and witness construction are measured in the timed phases.
+//!
 //! A system with no setup phase produces no `setup` rows. Proof size is
 //! recorded on `prove` rows only. Universal parameters that are reused across
 //! configurations are built outside the sweep; this harness measures only
@@ -128,6 +132,15 @@ pub trait System {
 
     /// Native scalar field used by this system.
     fn field(&self) -> &str;
+
+    /// Prepare untimed inputs for a configuration.
+    ///
+    /// Load constants, compute the reference hash and load universal
+    /// parameters here. Circuit synthesis, witness construction and library
+    /// calls belong in the timed phases.
+    fn prepare(&mut self, _rounds: usize) -> Result<(), BoxError> {
+        Ok(())
+    }
 
     /// Whether this system has a setup phase.
     ///
@@ -309,6 +322,15 @@ pub fn run_systems(
         for &rounds in &rounds {
             let name = system.name().to_string();
             let field = system.field().to_string();
+
+            if let Err(error) = system.prepare(rounds) {
+                result.failures.push(Failure {
+                    system: name.clone(),
+                    rounds,
+                    message: error.to_string(),
+                });
+                continue;
+            }
 
             if system.has_setup() {
                 let mut setup_ok = true;
