@@ -166,6 +166,16 @@ fn writes_csv_file_under_results() {
     assert_eq!(text.lines().next(), Some(CSV_HEADER));
 }
 
+#[test]
+fn registry_contains_groth16() {
+    let names: Vec<String> = harness::systems()
+        .iter()
+        .map(|system| system.name().to_string())
+        .collect();
+
+    assert!(names.iter().any(|name| name == "groth16"));
+}
+
 #[derive(Default)]
 struct NoSetupSystem;
 

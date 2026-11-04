@@ -7,6 +7,9 @@ rust-version.workspace = true
 publish.workspace = true
 
 [dependencies]
+ark-bls12-381.workspace = true
+ark-serialize.workspace = true
+ark-std.workspace = true
 mimc.workspace = true
 groth16 = { path = "../groth16" }
 plonk = { path = "../plonk" }

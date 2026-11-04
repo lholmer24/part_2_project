@@ -34,6 +34,7 @@ cargo test
 cargo test -p mimc --features extended-tests   # full sweep + Rust/Python agreement
 cargo clippy --all-targets
 cargo fmt --all -- --check
+cargo test -p groth16
 cargo run -p harness -- --system placeholder --rounds 8
 
 cd python
@@ -53,8 +54,9 @@ python3 -m venv .venv
 `python3 python/generate_round_constants.py` regenerates the committed round
 constants.
 
-The proof crates and analysis are not done yet. The harness runs with a
-placeholder system and writes `results/benchmarks.csv`.
+The harness runs with a placeholder and Groth16. PLONK, Bulletproofs, STARK,
+Halo2, Spartan and the analysis are not done yet. The harness writes
+`results/benchmarks.csv`.
 
 ## Harness output
 

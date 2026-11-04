@@ -13,6 +13,7 @@
 //! per-configuration work.
 
 pub mod placeholder;
+pub mod systems;
 
 use std::error::Error as StdError;
 use std::fmt;
@@ -22,6 +23,7 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 pub use placeholder::PlaceholderSystem;
+pub use systems::Groth16System;
 
 /// Boxed error returned by a system adapter.
 pub type BoxError = Box<dyn StdError + Send + Sync>;
@@ -232,7 +234,10 @@ pub fn default_output_path() -> PathBuf {
 ///
 /// Add each proof system here once its adapter implements [`System`].
 pub fn systems() -> Vec<Box<dyn System>> {
-    vec![Box::new(PlaceholderSystem::new())]
+    vec![
+        Box::new(PlaceholderSystem::new()),
+        Box::new(Groth16System::new()),
+    ]
 }
 
 /// Run the configured sweep with the registered systems.
