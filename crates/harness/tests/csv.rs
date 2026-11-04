@@ -167,6 +167,29 @@ fn writes_csv_file_under_results() {
 }
 
 #[test]
+fn writes_metadata_sidecar() {
+    let dir = std::env::temp_dir().join("harness-metadata-test");
+    let _ = std::fs::remove_dir_all(&dir);
+    let csv = dir.join("run.csv");
+    let metadata = harness::metadata_path(&csv);
+
+    assert_eq!(metadata, dir.join("run.meta.json"));
+
+    let config = RunConfig {
+        rounds: vec![1, 2],
+        samples: 3,
+        setup_samples: 4,
+        ..RunConfig::default()
+    };
+    harness::write_run_metadata(&metadata, &config).expect("write metadata");
+
+    let text = std::fs::read_to_string(&metadata).expect("read metadata");
+    assert!(text.contains("\"samples\": 3"));
+    assert!(text.contains("\"rounds\": ["));
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
 fn registry_contains_groth16() {
     let names: Vec<String> = harness::systems()
         .iter()

@@ -10,6 +10,11 @@ requires-python = ">=3.11"
 
 [project.optional-dependencies]
 dev = ["pytest>=8"]
+analysis = [
+    "matplotlib>=3.9",
+    "numpy>=2.0",
+    "pandas>=2.2",
+]
 
 [tool.setuptools]
 packages = ["mimc", "analysis"]

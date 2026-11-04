@@ -20,7 +20,7 @@ use std::fmt;
 use std::fs;
 use std::io::{self, BufWriter, Write};
 use std::path::{Path, PathBuf};
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 pub use placeholder::PlaceholderSystem;
 pub use systems::Groth16System;
@@ -186,6 +186,8 @@ impl Default for RunConfig {
 pub enum Error {
     /// A filesystem operation failed.
     Io(io::Error),
+    /// Metadata could not be encoded as JSON.
+    Json(serde_json::Error),
     /// The configuration is invalid.
     InvalidConfig(String),
     /// A name in `RunConfig::systems` matches no registered system.
@@ -198,6 +200,7 @@ impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Io(error) => write!(f, "harness I/O error: {error}"),
+            Self::Json(error) => write!(f, "metadata JSON error: {error}"),
             Self::InvalidConfig(message) => write!(f, "invalid configuration: {message}"),
             Self::UnknownSystem(name) => write!(f, "unknown system: {name}"),
             Self::NoSystems => write!(f, "no system matched the configuration"),
@@ -209,6 +212,7 @@ impl StdError for Error {
     fn source(&self) -> Option<&(dyn StdError + 'static)> {
         match self {
             Self::Io(error) => Some(error),
+            Self::Json(error) => Some(error),
             _ => None,
         }
     }
@@ -217,6 +221,12 @@ impl StdError for Error {
 impl From<io::Error> for Error {
     fn from(error: io::Error) -> Self {
         Self::Io(error)
+    }
+}
+
+impl From<serde_json::Error> for Error {
+    fn from(error: serde_json::Error) -> Self {
+        Self::Json(error)
     }
 }
 
@@ -427,4 +437,75 @@ pub fn write_csv_file(path: &Path, result: &SweepResult) -> Result<(), Error> {
     }
     let file = fs::File::create(path)?;
     write_csv(BufWriter::new(file), result)
+}
+
+/// Sidecar metadata path for a CSV path.
+///
+/// `results/benchmarks.csv` becomes `results/benchmarks.meta.json`.
+pub fn metadata_path(csv_path: &Path) -> PathBuf {
+    let mut path = csv_path.to_path_buf();
+    path.set_extension("meta.json");
+    path
+}
+
+/// Write run metadata next to the CSV.
+///
+/// The CSV holds only measurements. This sidecar records the environment and
+/// sample settings that the analysis needs for reproducibility.
+pub fn write_run_metadata(path: &Path, config: &RunConfig) -> Result<(), Error> {
+    if let Some(parent) = path.parent() {
+        if !parent.as_os_str().is_empty() {
+            fs::create_dir_all(parent)?;
+        }
+    }
+
+    let rounds = if config.rounds.is_empty() {
+        sweep_rounds()
+    } else {
+        config.rounds.clone()
+    };
+    let generated = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+
+    let metadata = serde_json::json!({
+        "generated_unix_seconds": generated,
+        "git_commit": git_commit(),
+        "build_profile": if cfg!(debug_assertions) { "debug" } else { "release" },
+        "os": std::env::consts::OS,
+        "arch": std::env::consts::ARCH,
+        "hostname": std::env::var("HOSTNAME").ok(),
+        "cpu_model": cpu_model(),
+        "systems": &config.systems,
+        "rounds": &rounds,
+        "samples": config.samples,
+        "setup_samples": config.setup_samples,
+        "warmup": config.warmup,
+        "csv_file": config.output.file_name().and_then(|name| name.to_str()),
+    });
+
+    fs::write(path, serde_json::to_vec_pretty(&metadata)?)?;
+    Ok(())
+}
+
+fn git_commit() -> Option<String> {
+    let output = std::process::Command::new("git")
+        .args(["rev-parse", "HEAD"])
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let text = String::from_utf8(output.stdout).ok()?;
+    Some(text.trim().to_string())
+}
+
+fn cpu_model() -> Option<String> {
+    let text = fs::read_to_string("/proc/cpuinfo").ok()?;
+    text.lines().find_map(|line| {
+        line.strip_prefix("model name")
+            .and_then(|rest| rest.split_once(':'))
+            .map(|(_, value)| value.trim().to_string())
+    })
 }

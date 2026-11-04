@@ -12,6 +12,7 @@ ark-serialize.workspace = true
 ark-std.workspace = true
 mimc.workspace = true
 groth16 = { path = "../groth16" }
+serde_json.workspace = true
 plonk = { path = "../plonk" }
 bulletproofs = { path = "../bulletproofs" }
 stark = { path = "../stark" }

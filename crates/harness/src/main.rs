@@ -4,7 +4,7 @@ use std::env;
 use std::path::PathBuf;
 use std::process::ExitCode;
 
-use harness::{run, sweep_rounds, write_csv_file, Phase, RunConfig};
+use harness::{metadata_path, run, sweep_rounds, write_csv_file, write_run_metadata, RunConfig};
 
 const USAGE: &str = "\
 usage: harness [options]
@@ -47,6 +47,12 @@ fn execute(config: &RunConfig) -> ExitCode {
         return ExitCode::FAILURE;
     }
 
+    let metadata = metadata_path(&config.output);
+    if let Err(error) = write_run_metadata(&metadata, config) {
+        eprintln!("cannot write {}: {error}", metadata.display());
+        return ExitCode::FAILURE;
+    }
+
     for failure in &result.failures {
         eprintln!(
             "{} at {} rounds: {}",
@@ -54,19 +60,11 @@ fn execute(config: &RunConfig) -> ExitCode {
         );
     }
 
-    let count = |phase: Phase| {
-        result
-            .records
-            .iter()
-            .filter(|record| record.phase == phase)
-            .count()
-    };
     println!(
-        "wrote {} setup rows, {} proof rows and {} verification rows to {}",
-        count(Phase::Setup),
-        count(Phase::Prove),
-        count(Phase::Verify),
-        config.output.display()
+        "wrote {} rows to {} and metadata to {}",
+        result.records.len(),
+        config.output.display(),
+        metadata.display()
     );
     ExitCode::SUCCESS
 }

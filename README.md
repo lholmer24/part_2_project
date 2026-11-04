@@ -8,7 +8,7 @@ Spartan on a MiMC preimage statement.
 | Path | Purpose |
 |---|---|
 | `crates/mimc/` | Shared MiMC core, constants loader and field adapters |
-| `crates/harness/` | Common setup/prove/verify interface, criterion timing and CSV output |
+| `crates/harness/` | Common setup/prove/verify interface, phase CSV and metadata output |
 | `crates/groth16/` | Groth16 over BLS12-381 |
 | `crates/plonk/` | PLONK over BLS12-381 |
 | `crates/bulletproofs/` | Bulletproofs over Ristretto255 |
@@ -56,7 +56,7 @@ constants.
 
 The harness runs with a placeholder and Groth16. PLONK, Bulletproofs, STARK,
 Halo2, Spartan and the analysis are not done yet. The harness writes
-`results/benchmarks.csv`.
+`results/benchmarks.csv` and `results/benchmarks.meta.json`.
 
 ## Harness output
 
@@ -82,6 +82,15 @@ system,field,rounds,phase,sample,time_ns,proof_size_bytes
 Universal parameters that are reused across configurations are generated
 outside the sweep and reported separately. The CSV records only measured data;
 the paper explains the setup type and phase boundaries for each system.
+
+The harness also writes `<name>.meta.json` next to the CSV. It records the
+timestamp, git commit, build profile, host, CPU, systems, round counts and
+sample settings. The CSV stays numeric; the sidecar carries reproducibility
+metadata.
+
+The Rust harness only measures and writes raw data. The Python analysis reads
+the CSV and metadata, prints summaries and renders figures. The analysis scripts
+are not done yet.
 
 ## Parameters
 
