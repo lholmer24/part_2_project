@@ -34,6 +34,7 @@ cargo test
 cargo test -p mimc --features extended-tests   # full sweep + Rust/Python agreement
 cargo clippy --all-targets
 cargo fmt --all -- --check
+cargo run -p harness -- --system placeholder --rounds 8
 
 cd python
 .venv/bin/python -m pytest
@@ -52,7 +53,33 @@ python3 -m venv .venv
 `python3 python/generate_round_constants.py` regenerates the committed round
 constants.
 
-The proof crates, harness and analysis are not done yet.
+The proof crates and analysis are not done yet. The harness runs with a
+placeholder system and writes `results/benchmarks.csv`.
+
+## Harness output
+
+Setup, proving and verification are timed separately. For each system and round
+count, the harness runs:
+
+1. `--setup-samples` timed setups, if the system has a setup phase.
+2. `--warmup` untimed prove/verify pairs.
+3. `--samples` timed prove/verify pairs.
+
+The CSV has one row per timed phase repetition:
+
+```
+system,field,rounds,phase,sample,time_ns,proof_size_bytes
+```
+
+- `phase` is `setup`, `prove` or `verify`.
+- `sample` is the repetition index within that phase.
+- `time_ns` is the measured time in nanoseconds.
+- `proof_size_bytes` is present on `prove` rows only.
+- A system without a setup phase has no `setup` rows.
+
+Universal parameters that are reused across configurations are generated
+outside the sweep and reported separately. The CSV records only measured data;
+the paper explains the setup type and phase boundaries for each system.
 
 ## Parameters
 
