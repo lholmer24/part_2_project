@@ -9,4 +9,3 @@ publish.workspace = true
 [dependencies]
 dusk-plonk.workspace = true
 mimc.workspace = true
-rand_core = { version = "=0.6.4", default-features = false }

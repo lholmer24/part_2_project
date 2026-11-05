@@ -1,13 +1,15 @@
-//! Groth16 tests.
+//! Groth16 circuit tests.
 //!
+//! These tests exercise the circuit and the arkworks API directly. The harness
+//! adapter is tested through the `System` trait in `crates/harness/tests`.
 
 use ark_bls12_381::{Bls12_381, Fr};
-use ark_groth16::Proof;
+use ark_groth16::{prepare_verifying_key, Groth16, PreparedVerifyingKey, Proof};
 use ark_relations::gr1cs::{ConstraintSynthesizer, ConstraintSystem};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::test_rng;
-
-use groth16::{prove, setup, verify, MimcParams, MimcPreimageCircuit};
+use groth16::MimcPreimageCircuit;
+use mimc::MimcParams;
 
 const PREIMAGE: u64 = 12345;
 
@@ -25,35 +27,51 @@ fn circuit(params: MimcParams<Fr>, hash: Fr) -> MimcPreimageCircuit {
     }
 }
 
-#[test]
-fn valid_proof_at_every_round_count() {
+fn build(rounds: usize) -> (PreparedVerifyingKey<Bls12_381>, Fr, Proof<Bls12_381>) {
     let mut rng = test_rng();
-    for k in 0..=15 {
-        let rounds = 1usize << k;
-        let (params, hash) = statement(rounds);
-        let setup = setup(params.clone(), &mut rng).expect("setup");
-        let proof = prove(&setup, circuit(params, hash), &mut rng).expect("prove");
-        assert!(verify(&setup, hash, &proof).expect("verify"));
+    let (params, hash) = statement(rounds);
+
+    let proving_key = Groth16::<Bls12_381>::generate_random_parameters_with_reduction(
+        circuit(params.clone(), hash),
+        &mut rng,
+    )
+    .expect("setup");
+    let prepared_verifying_key = prepare_verifying_key(&proving_key.vk);
+    let proof = Groth16::<Bls12_381>::create_random_proof_with_reduction(
+        circuit(params, hash),
+        &proving_key,
+        &mut rng,
+    )
+    .expect("prove");
+
+    (prepared_verifying_key, hash, proof)
+}
+
+#[test]
+fn valid_proof_at_selected_round_counts() {
+    for rounds in [1usize, 2, 4, 8, 16] {
+        let (prepared_verifying_key, hash, proof) = build(rounds);
+        assert!(
+            Groth16::<Bls12_381>::verify_proof(&prepared_verifying_key, &proof, &[hash])
+                .expect("verify")
+        );
     }
 }
 
 #[test]
 fn wrong_public_hash_is_rejected() {
-    let mut rng = test_rng();
-    let (params, hash) = statement(8);
-    let setup = setup(params.clone(), &mut rng).expect("setup");
-    let proof = prove(&setup, circuit(params, hash), &mut rng).expect("prove");
+    let (prepared_verifying_key, hash, proof) = build(8);
     let wrong_hash = hash + Fr::from(1u64);
 
-    assert!(!verify(&setup, wrong_hash, &proof).expect("verify"));
+    assert!(
+        !Groth16::<Bls12_381>::verify_proof(&prepared_verifying_key, &proof, &[wrong_hash])
+            .expect("verify")
+    );
 }
 
 #[test]
 fn altered_proof_is_rejected() {
-    let mut rng = test_rng();
-    let (params, hash) = statement(8);
-    let setup = setup(params.clone(), &mut rng).expect("setup");
-    let proof = prove(&setup, circuit(params, hash), &mut rng).expect("prove");
+    let (prepared_verifying_key, hash, proof) = build(8);
 
     let mut bytes = Vec::new();
     proof.serialize_compressed(&mut bytes).expect("serialise");
@@ -61,7 +79,10 @@ fn altered_proof_is_rejected() {
     bytes[middle] ^= 1;
 
     if let Ok(altered) = Proof::<Bls12_381>::deserialize_compressed(&bytes[..]) {
-        assert!(!verify(&setup, hash, &altered).expect("verify"));
+        assert!(
+            !Groth16::<Bls12_381>::verify_proof(&prepared_verifying_key, &altered, &[hash])
+                .expect("verify")
+        );
     }
 }
 
@@ -77,4 +98,15 @@ fn constraint_count_matches_round_structure() {
 
         assert_eq!(cs.num_constraints(), 3 * rounds + 1);
     }
+}
+
+#[test]
+fn circuit_is_satisfied() {
+    let (params, hash) = statement(8);
+    let cs = ConstraintSystem::<Fr>::new_ref();
+    circuit(params, hash)
+        .generate_constraints(cs.clone())
+        .expect("synthesise");
+
+    assert!(cs.is_satisfied().expect("check satisfaction"));
 }

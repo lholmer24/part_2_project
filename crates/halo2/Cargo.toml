@@ -9,4 +9,3 @@ publish.workspace = true
 [dependencies]
 halo2_proofs.workspace = true
 mimc.workspace = true
-rand_core = { version = "=0.10.1", default-features = false }

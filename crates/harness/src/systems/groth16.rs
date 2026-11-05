@@ -1,22 +1,29 @@
 //! Groth16 adapter for the benchmark harness.
+//!
+//! The adapter calls `ark-groth16` directly. It holds no timer, so the harness
+//! times setup, proving and verification at one call boundary.
 
-use std::time::Instant;
-
-use ark_bls12_381::Fr;
+use ark_bls12_381::{Bls12_381, Fr};
+use ark_groth16::{prepare_verifying_key, Groth16, PreparedVerifyingKey, ProvingKey};
 use ark_serialize::CanonicalSerialize;
+use groth16::MimcPreimageCircuit;
+use mimc::MimcParams;
 
-use groth16::{Groth16Params, MimcParams, MimcPreimageCircuit};
-
-use crate::{BoxError, ProofSample, System};
+use crate::{BoxError, ProofBox, System};
 
 /// Preimage used for every Groth16 benchmark statement.
 const PREIMAGE: u64 = 12345;
+
+struct Keys {
+    proving_key: ProvingKey<Bls12_381>,
+    prepared_verifying_key: PreparedVerifyingKey<Bls12_381>,
+}
 
 struct Prepared {
     mimc: MimcParams<Fr>,
     hash: Fr,
     preimage: Fr,
-    groth16: Option<Groth16Params>,
+    keys: Option<Keys>,
 }
 
 /// Harness adapter for Groth16 over BLS12-381.
@@ -51,69 +58,93 @@ impl System for Groth16System {
             mimc,
             hash,
             preimage,
-            groth16: None,
+            keys: None,
         });
         Ok(())
     }
 
-    fn setup(&mut self, _rounds: usize) -> Result<(), BoxError> {
-        let mimc = match &self.prepared {
-            Some(prepared) => prepared.mimc.clone(),
-            None => return Err("groth16 prepare was not run".into()),
+    fn setup(&mut self) -> Result<(), BoxError> {
+        let circuit = {
+            let prepared = match &self.prepared {
+                Some(prepared) => prepared,
+                None => return Err("groth16 prepare was not run".into()),
+            };
+            MimcPreimageCircuit {
+                params: prepared.mimc.clone(),
+                hash: prepared.hash,
+                preimage: None,
+            }
         };
-        let mut rng = ark_std::test_rng();
-        let groth16 =
-            groth16::setup(mimc, &mut rng).map_err(|error| -> BoxError { Box::new(error) })?;
 
-        if let Some(prepared) = &mut self.prepared {
-            prepared.groth16 = Some(groth16);
+        let mut rng = ark_std::test_rng();
+        let proving_key =
+            Groth16::<Bls12_381>::generate_random_parameters_with_reduction(circuit, &mut rng)
+                .map_err(|error| -> BoxError { Box::new(error) })?;
+        let prepared_verifying_key = prepare_verifying_key(&proving_key.vk);
+
+        match &mut self.prepared {
+            Some(prepared) => {
+                prepared.keys = Some(Keys {
+                    proving_key,
+                    prepared_verifying_key,
+                });
+                Ok(())
+            }
+            None => Err("groth16 prepare was not run".into()),
         }
-        Ok(())
     }
 
-    fn measure(&self, _rounds: usize) -> Result<ProofSample, BoxError> {
+    fn prove(&self) -> Result<ProofBox, BoxError> {
         let prepared = match &self.prepared {
             Some(prepared) => prepared,
             None => return Err("groth16 prepare was not run".into()),
         };
-        let params = match &prepared.groth16 {
-            Some(params) => params,
+        let keys = match &prepared.keys {
+            Some(keys) => keys,
             None => return Err("groth16 setup was not run".into()),
         };
 
-        // Circuit synthesis and witness construction are inside the prove timer
-        // and inside the library prover call.
         let circuit = MimcPreimageCircuit {
             params: prepared.mimc.clone(),
             hash: prepared.hash,
             preimage: Some(prepared.preimage),
         };
         let mut rng = ark_std::test_rng();
+        let proof = Groth16::<Bls12_381>::create_random_proof_with_reduction(
+            circuit,
+            &keys.proving_key,
+            &mut rng,
+        )
+        .map_err(|error| -> BoxError { Box::new(error) })?;
 
-        let start = Instant::now();
-        let proof = groth16::prove(params, circuit, &mut rng)
-            .map_err(|error| -> BoxError { Box::new(error) })?;
-        let prove_time = start.elapsed();
+        Ok(ProofBox::new(proof))
+    }
 
+    fn proof_size(&self, proof: &ProofBox) -> Result<usize, BoxError> {
+        let proof = proof
+            .downcast_ref::<ark_groth16::Proof<Bls12_381>>()
+            .ok_or("groth16 proof type mismatch")?;
         let mut bytes: Vec<u8> = Vec::new();
         proof
             .serialize_compressed(&mut bytes)
             .map_err(|error| -> BoxError { Box::new(error) })?;
-        let proof_size = bytes.len();
+        Ok(bytes.len())
+    }
 
-        let start = Instant::now();
-        let valid = groth16::verify(params, prepared.hash, &proof)
-            .map_err(|error| -> BoxError { Box::new(error) })?;
-        let verify_time = start.elapsed();
+    fn verify(&self, proof: &ProofBox) -> Result<bool, BoxError> {
+        let prepared = match &self.prepared {
+            Some(prepared) => prepared,
+            None => return Err("groth16 prepare was not run".into()),
+        };
+        let keys = match &prepared.keys {
+            Some(keys) => keys,
+            None => return Err("groth16 setup was not run".into()),
+        };
+        let proof = proof
+            .downcast_ref::<ark_groth16::Proof<Bls12_381>>()
+            .ok_or("groth16 proof type mismatch")?;
 
-        if !valid {
-            return Err("groth16 proof did not verify".into());
-        }
-
-        Ok(ProofSample {
-            proof_size,
-            prove_time,
-            verify_time,
-        })
+        Groth16::<Bls12_381>::verify_proof(&keys.prepared_verifying_key, proof, &[prepared.hash])
+            .map_err(|error| -> BoxError { Box::new(error) })
     }
 }

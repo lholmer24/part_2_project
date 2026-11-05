@@ -1,10 +1,12 @@
 //! Harness tests.
 
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
 use std::time::Duration;
 
 use harness::{
     default_output_path, run, run_systems, sweep_rounds, write_csv, BoxError, Error, Phase,
-    ProofSample, Record, RunConfig, SweepResult, System, CSV_HEADER, DEFAULT_SAMPLES,
+    ProofBox, Record, RunConfig, SweepResult, System, CSV_HEADER, DEFAULT_SAMPLES,
     DEFAULT_SETUP_SAMPLES,
 };
 
@@ -215,16 +217,20 @@ impl System for NoSetupSystem {
         false
     }
 
-    fn setup(&mut self, _rounds: usize) -> Result<(), BoxError> {
+    fn setup(&mut self) -> Result<(), BoxError> {
         panic!("setup must not be called for a system without setup");
     }
 
-    fn measure(&self, _rounds: usize) -> Result<ProofSample, BoxError> {
-        Ok(ProofSample {
-            proof_size: 0,
-            prove_time: Duration::ZERO,
-            verify_time: Duration::ZERO,
-        })
+    fn prove(&self) -> Result<ProofBox, BoxError> {
+        Ok(ProofBox::new(0u8))
+    }
+
+    fn proof_size(&self, _proof: &ProofBox) -> Result<usize, BoxError> {
+        Ok(0)
+    }
+
+    fn verify(&self, _proof: &ProofBox) -> Result<bool, BoxError> {
+        Ok(true)
     }
 }
 
@@ -247,4 +253,115 @@ fn system_without_setup_has_no_setup_rows() {
 
     assert_eq!(setups, 0);
     assert_eq!(result.records.len(), 2 + 2);
+}
+
+#[derive(Clone, Default)]
+struct UniversalCounter {
+    calls: Arc<AtomicUsize>,
+}
+
+impl System for UniversalCounter {
+    fn name(&self) -> &str {
+        "universal-counter"
+    }
+
+    fn field(&self) -> &str {
+        "none"
+    }
+
+    fn prepare_universal(&mut self, _max_rounds: usize) -> Result<(), BoxError> {
+        self.calls.fetch_add(1, Ordering::SeqCst);
+        Ok(())
+    }
+
+    fn setup(&mut self) -> Result<(), BoxError> {
+        Ok(())
+    }
+
+    fn prove(&self) -> Result<ProofBox, BoxError> {
+        Ok(ProofBox::new(0u8))
+    }
+
+    fn proof_size(&self, _proof: &ProofBox) -> Result<usize, BoxError> {
+        Ok(0)
+    }
+
+    fn verify(&self, _proof: &ProofBox) -> Result<bool, BoxError> {
+        Ok(true)
+    }
+}
+
+#[test]
+fn universal_preparation_runs_once_per_system() {
+    let calls = Arc::new(AtomicUsize::new(0));
+    let system = UniversalCounter {
+        calls: calls.clone(),
+    };
+    let config = RunConfig {
+        rounds: vec![1, 2, 4],
+        setup_samples: 1,
+        samples: 1,
+        warmup: 0,
+        ..RunConfig::default()
+    };
+
+    let result = run_systems(vec![Box::new(system)], &config).expect("run universal counter");
+
+    assert!(result.failures.is_empty());
+    assert_eq!(calls.load(Ordering::SeqCst), 1);
+}
+
+#[derive(Default)]
+struct SlowSystem;
+
+impl System for SlowSystem {
+    fn name(&self) -> &str {
+        "slow"
+    }
+
+    fn field(&self) -> &str {
+        "none"
+    }
+
+    fn setup(&mut self) -> Result<(), BoxError> {
+        std::thread::sleep(Duration::from_millis(2));
+        Ok(())
+    }
+
+    fn prove(&self) -> Result<ProofBox, BoxError> {
+        std::thread::sleep(Duration::from_millis(2));
+        Ok(ProofBox::new(0u8))
+    }
+
+    fn proof_size(&self, _proof: &ProofBox) -> Result<usize, BoxError> {
+        Ok(0)
+    }
+
+    fn verify(&self, _proof: &ProofBox) -> Result<bool, BoxError> {
+        std::thread::sleep(Duration::from_millis(2));
+        Ok(true)
+    }
+}
+
+#[test]
+fn every_phase_is_timed() {
+    let config = RunConfig {
+        rounds: vec![1],
+        setup_samples: 1,
+        samples: 1,
+        warmup: 0,
+        ..RunConfig::default()
+    };
+
+    let result = run_systems(vec![Box::new(SlowSystem)], &config).expect("run slow system");
+
+    assert_eq!(result.records.len(), 3);
+    for record in &result.records {
+        assert!(
+            record.time >= Duration::from_millis(2),
+            "{} took {:?}",
+            record.phase,
+            record.time
+        );
+    }
 }

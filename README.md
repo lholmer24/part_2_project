@@ -8,13 +8,13 @@ Spartan on a MiMC preimage statement.
 | Path | Purpose |
 |---|---|
 | `crates/mimc/` | Shared MiMC core, constants loader and field adapters |
-| `crates/harness/` | Common setup/prove/verify interface, phase CSV and metadata output |
-| `crates/groth16/` | Groth16 over BLS12-381 |
-| `crates/plonk/` | PLONK over BLS12-381 |
-| `crates/bulletproofs/` | Bulletproofs over Ristretto255 |
-| `crates/stark/` | STARK over winterfell `f128` |
-| `crates/halo2/` | Halo2 over Pasta |
-| `crates/spartan/` | Spartan over Ristretto255 |
+| `crates/harness/` | Common `System` interface, one adapter per system, phase CSV and metadata output |
+| `crates/groth16/` | Groth16 circuit over BLS12-381 |
+| `crates/plonk/` | PLONK circuit over BLS12-381 |
+| `crates/bulletproofs/` | Bulletproofs R1CS over Ristretto255 |
+| `crates/stark/` | STARK AIR and trace over winterfell `f128` |
+| `crates/halo2/` | Halo2 circuit over Pasta |
+| `crates/spartan/` | Spartan R1CS over Ristretto255 |
 | `params/PARAMS.md` | Field, exponent, round-count and security parameters |
 | `params/round_constants/` | Generated round constants, one file per field |
 | `python/` | Python MiMC reference, constant generator and analysis |
@@ -54,16 +54,19 @@ python3 -m venv .venv
 `python3 python/generate_round_constants.py` regenerates the committed round
 constants.
 
-The harness runs with a placeholder and Groth16. PLONK, Bulletproofs, STARK,
-Halo2, Spartan and the analysis are not done yet. The harness writes
-`results/benchmarks.csv` and `results/benchmarks.meta.json`.
+The harness registers the placeholder and Groth16 adapters. PLONK, Bulletproofs,
+STARK, Halo2 and Spartan have adapters and circuit skeletons in place, but the
+bodies are not implemented yet, so they are not registered. The analysis is not
+done yet. The harness writes `results/benchmarks.csv` and
+`results/benchmarks.meta.json`.
 
 ## Harness output
 
-Setup, proving and verification are timed separately. For each system and round
-count, the harness runs:
+Setup, proving and verification are timed separately. The harness owns every
+timer. For each system it runs one untimed universal preparation, then for each
+round count it runs:
 
-1. An untimed preparation step: constants, circuit and witness data.
+1. An untimed preparation step: constants and reference hash.
 2. `--setup-samples` timed setups, if the system has a setup phase.
 3. `--warmup` untimed prove/verify pairs.
 4. `--samples` timed prove/verify pairs.
@@ -80,16 +83,20 @@ system,field,rounds,phase,sample,time_ns,proof_size_bytes
 - `proof_size_bytes` is present on `prove` rows only.
 - A system without a setup phase has no `setup` rows.
 
-Universal parameters that are reused across configurations are generated
-outside the sweep and reported separately. The CSV records only measured data;
-the paper explains the setup type and phase boundaries for each system.
+Universal parameters that are reused across configurations are generated once
+before the round sweep and reported separately. The CSV records only measured
+data; the report explains the setup type and phase boundaries for each system.
 
 Phase boundaries for Groth16:
 
 - Preparation, untimed: load the round constants and compute the reference hash.
 - Setup, timed: circuit synthesis plus key generation.
 - Prove, timed: circuit synthesis, witness construction and proof generation.
-- Verify, timed: verification only. Proof deserialisation is outside the timer.
+- Verify, timed: verification only. Proof serialisation is outside the timer.
+
+The harness starts and stops all three timers. The adapter in
+`crates/harness/src/systems/groth16.rs` calls `ark-groth16` directly, and
+`crates/groth16` holds only the circuit.
 
 See `docs/timing-plan.md` for the exact timed and untimed segments of every
 system. Circuit synthesis is counted as measured work throughout.

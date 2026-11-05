@@ -3,9 +3,7 @@
 //! The placeholder does no real work. It exists so the harness can be tested
 //! before a proof system is wired in.
 
-use std::time::Duration;
-
-use crate::{BoxError, ProofSample, System};
+use crate::{BoxError, ProofBox, System};
 
 /// Placeholder proof system.
 #[derive(Clone, Debug, Default)]
@@ -27,15 +25,19 @@ impl System for PlaceholderSystem {
         "none"
     }
 
-    fn setup(&mut self, _rounds: usize) -> Result<(), BoxError> {
+    fn setup(&mut self) -> Result<(), BoxError> {
         Ok(())
     }
 
-    fn measure(&self, _rounds: usize) -> Result<ProofSample, BoxError> {
-        Ok(ProofSample {
-            proof_size: 0,
-            prove_time: Duration::ZERO,
-            verify_time: Duration::ZERO,
-        })
+    fn prove(&self) -> Result<ProofBox, BoxError> {
+        Ok(ProofBox::new(0u8))
+    }
+
+    fn proof_size(&self, _proof: &ProofBox) -> Result<usize, BoxError> {
+        Ok(0)
+    }
+
+    fn verify(&self, _proof: &ProofBox) -> Result<bool, BoxError> {
+        Ok(true)
     }
 }

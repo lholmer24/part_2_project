@@ -9,4 +9,5 @@ publish.workspace = true
 [dependencies]
 bulletproofs_lib.workspace = true
 curve25519-dalek = { version = "=3.2.0", default-features = false, features = ["u64_backend"] }
+merlin = { version = "2", default-features = false }
 mimc.workspace = true

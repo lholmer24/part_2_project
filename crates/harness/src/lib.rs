@@ -7,18 +7,22 @@
 //! system,field,rounds,phase,sample,time_ns,proof_size_bytes
 //! ```
 //!
-//! [`System::prepare`] runs once per configuration before any timer starts. Use
-//! it for file loading, reference hashing and universal parameters. Circuit
-//! synthesis and witness construction are measured in the timed phases.
+//! [`System::prepare_universal`] runs once per system before the round sweep.
+//! [`System::prepare`] runs once per configuration. Both are untimed. Use them
+//! for file loading, reference hashing and reusable parameters.
+//!
+//! [`System::setup`], [`System::prove`] and [`System::verify`] are timed by
+//! [`run_systems`], so every system is measured at the same call boundary.
+//! Adapters must not contain timers. Circuit synthesis and witness
+//! construction are measured inside the prover or setup calls.
 //!
 //! A system with no setup phase produces no `setup` rows. Proof size is
-//! recorded on `prove` rows only. Universal parameters that are reused across
-//! configurations are built outside the sweep; this harness measures only
-//! per-configuration work.
+//! recorded on `prove` rows only.
 
 pub mod placeholder;
 pub mod systems;
 
+use std::any::Any;
 use std::error::Error as StdError;
 use std::fmt;
 use std::fs;
@@ -94,15 +98,22 @@ pub struct Record {
     pub proof_size_bytes: Option<usize>,
 }
 
-/// Timings returned by [`System::measure`] for one proof and one verification.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct ProofSample {
-    /// Proof size in bytes.
-    pub proof_size: usize,
-    /// Prover time, with setup outside the timer.
-    pub prove_time: Duration,
-    /// Verifier time, with deserialisation outside the timer.
-    pub verify_time: Duration,
+/// An opaque proof returned by an adapter.
+///
+/// The harness never inspects the proof. The adapter downcasts it in
+/// [`System::proof_size`] and [`System::verify`].
+pub struct ProofBox(Box<dyn Any>);
+
+impl ProofBox {
+    /// Wrap a concrete proof value.
+    pub fn new<T: Any>(proof: T) -> Self {
+        Self(Box::new(proof))
+    }
+
+    /// Borrow the proof as its concrete type.
+    pub fn downcast_ref<T: Any>(&self) -> Option<&T> {
+        self.0.downcast_ref::<T>()
+    }
 }
 
 /// One configuration that failed during a sweep.
@@ -126,6 +137,8 @@ pub struct SweepResult {
 }
 
 /// A proof system that the harness can benchmark.
+///
+/// The harness owns every timer. Implementations must not measure time.
 pub trait System {
     /// Short system name used in the CSV.
     fn name(&self) -> &str;
@@ -133,16 +146,24 @@ pub trait System {
     /// Native scalar field used by this system.
     fn field(&self) -> &str;
 
-    /// Prepare untimed inputs for a configuration.
+    /// Build one-time universal parameters before the sweep.
     ///
-    /// Load constants, compute the reference hash and load universal
-    /// parameters here. Circuit synthesis, witness construction and library
-    /// calls belong in the timed phases.
+    /// The harness calls this once per system, before any timer starts.
+    /// `max_rounds` is the largest round count in the sweep. Store the
+    /// parameters in a field that [`System::prepare`] does not reset.
+    fn prepare_universal(&mut self, _max_rounds: usize) -> Result<(), BoxError> {
+        Ok(())
+    }
+
+    /// Prepare untimed inputs for one configuration.
+    ///
+    /// Load constants and compute the reference hash here. Circuit synthesis,
+    /// witness construction and library calls belong in the timed phases.
     fn prepare(&mut self, _rounds: usize) -> Result<(), BoxError> {
         Ok(())
     }
 
-    /// Whether this system has a setup phase.
+    /// Whether this system has a per-configuration setup phase.
     ///
     /// Return `false` for transparent systems that need no reusable
     /// preprocessing. The harness then emits no setup rows and never calls
@@ -151,17 +172,25 @@ pub trait System {
         true
     }
 
-    /// Prepare the keys or generators for `rounds`.
+    /// Run the per-configuration setup.
     ///
-    /// Store the prepared state inside the adapter. The harness times this call
-    /// and reuses the final state for every proof sample.
-    fn setup(&mut self, rounds: usize) -> Result<(), BoxError>;
+    /// The harness times this call. Store the prepared state in the adapter.
+    fn setup(&mut self) -> Result<(), BoxError>;
 
-    /// Run one prove/verify pair.
+    /// Run the prover.
     ///
-    /// Time proving and verification separately. Setup must be outside both
-    /// timers. Return the proof size in bytes.
-    fn measure(&self, rounds: usize) -> Result<ProofSample, BoxError>;
+    /// The harness times this call. Return the proof as an opaque value.
+    fn prove(&self) -> Result<ProofBox, BoxError>;
+
+    /// Serialise the proof and return its size in bytes.
+    ///
+    /// The harness calls this after the prove timer stops.
+    fn proof_size(&self, proof: &ProofBox) -> Result<usize, BoxError>;
+
+    /// Run the verifier.
+    ///
+    /// The harness times this call.
+    fn verify(&self, proof: &ProofBox) -> Result<bool, BoxError>;
 }
 
 /// Sweep configuration.
@@ -317,12 +346,24 @@ pub fn run_systems(
         }
     }
 
+    let max_rounds = *rounds.iter().max().expect("round list is never empty");
+
     let mut result = SweepResult::default();
     for system in &mut registry {
-        for &rounds in &rounds {
-            let name = system.name().to_string();
-            let field = system.field().to_string();
+        let name = system.name().to_string();
+        let field = system.field().to_string();
 
+        // Universal parameters are built once, outside every timer.
+        if let Err(error) = system.prepare_universal(max_rounds) {
+            result.failures.push(Failure {
+                system: name.clone(),
+                rounds: max_rounds,
+                message: error.to_string(),
+            });
+            continue;
+        }
+
+        for &rounds in &rounds {
             if let Err(error) = system.prepare(rounds) {
                 result.failures.push(Failure {
                     system: name.clone(),
@@ -332,18 +373,22 @@ pub fn run_systems(
                 continue;
             }
 
+            // All three phases are timed here, at the same call boundary.
             if system.has_setup() {
                 let mut setup_ok = true;
                 for sample in 0..config.setup_samples {
                     let start = Instant::now();
-                    match system.setup(rounds) {
+                    let outcome = system.setup();
+                    let time = start.elapsed();
+
+                    match outcome {
                         Ok(()) => result.records.push(Record {
                             system: name.clone(),
                             field: field.clone(),
                             rounds,
                             phase: Phase::Setup,
                             sample,
-                            time: start.elapsed(),
+                            time,
                             proof_size_bytes: None,
                         }),
                         Err(error) => {
@@ -364,14 +409,39 @@ pub fn run_systems(
 
             let mut failed = false;
             for _ in 0..config.warmup {
-                if let Err(error) = system.measure(rounds) {
-                    result.failures.push(Failure {
-                        system: name.clone(),
-                        rounds,
-                        message: error.to_string(),
-                    });
-                    failed = true;
-                    break;
+                let proof = match system.prove() {
+                    Ok(proof) => proof,
+                    Err(error) => {
+                        result.failures.push(Failure {
+                            system: name.clone(),
+                            rounds,
+                            message: error.to_string(),
+                        });
+                        failed = true;
+                        break;
+                    }
+                };
+
+                match system.verify(&proof) {
+                    Ok(true) => {}
+                    Ok(false) => {
+                        result.failures.push(Failure {
+                            system: name.clone(),
+                            rounds,
+                            message: "proof did not verify".to_string(),
+                        });
+                        failed = true;
+                        break;
+                    }
+                    Err(error) => {
+                        result.failures.push(Failure {
+                            system: name.clone(),
+                            rounds,
+                            message: error.to_string(),
+                        });
+                        failed = true;
+                        break;
+                    }
                 }
             }
             if failed {
@@ -379,27 +449,9 @@ pub fn run_systems(
             }
 
             for sample in 0..config.samples {
-                match system.measure(rounds) {
-                    Ok(proof) => {
-                        result.records.push(Record {
-                            system: name.clone(),
-                            field: field.clone(),
-                            rounds,
-                            phase: Phase::Prove,
-                            sample,
-                            time: proof.prove_time,
-                            proof_size_bytes: Some(proof.proof_size),
-                        });
-                        result.records.push(Record {
-                            system: name.clone(),
-                            field: field.clone(),
-                            rounds,
-                            phase: Phase::Verify,
-                            sample,
-                            time: proof.verify_time,
-                            proof_size_bytes: None,
-                        });
-                    }
+                let start = Instant::now();
+                let proof = match system.prove() {
+                    Ok(proof) => proof,
                     Err(error) => {
                         result.failures.push(Failure {
                             system: name.clone(),
@@ -408,7 +460,63 @@ pub fn run_systems(
                         });
                         break;
                     }
+                };
+                let prove_time = start.elapsed();
+
+                // Serialisation and size measurement are outside both timers.
+                let proof_size = match system.proof_size(&proof) {
+                    Ok(size) => size,
+                    Err(error) => {
+                        result.failures.push(Failure {
+                            system: name.clone(),
+                            rounds,
+                            message: error.to_string(),
+                        });
+                        break;
+                    }
+                };
+
+                let start = Instant::now();
+                let valid = match system.verify(&proof) {
+                    Ok(valid) => valid,
+                    Err(error) => {
+                        result.failures.push(Failure {
+                            system: name.clone(),
+                            rounds,
+                            message: error.to_string(),
+                        });
+                        break;
+                    }
+                };
+                let verify_time = start.elapsed();
+
+                if !valid {
+                    result.failures.push(Failure {
+                        system: name.clone(),
+                        rounds,
+                        message: "proof did not verify".to_string(),
+                    });
+                    break;
                 }
+
+                result.records.push(Record {
+                    system: name.clone(),
+                    field: field.clone(),
+                    rounds,
+                    phase: Phase::Prove,
+                    sample,
+                    time: prove_time,
+                    proof_size_bytes: Some(proof_size),
+                });
+                result.records.push(Record {
+                    system: name.clone(),
+                    field: field.clone(),
+                    rounds,
+                    phase: Phase::Verify,
+                    sample,
+                    time: verify_time,
+                    proof_size_bytes: None,
+                });
             }
         }
     }
