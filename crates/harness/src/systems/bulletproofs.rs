@@ -1,7 +1,8 @@
 //! Bulletproofs adapter for the benchmark harness.
 //!
 //! Not done yet. The adapter will hold the Pedersen and Bulletproof generators
-//! and the current MiMC statement. It has no setup phase.
+//! and the current MiMC statement. It has no setup phase. The circuit and R1CS
+//! builders are in `circuits::bulletproofs`.
 
 use crate::{BoxError, ProofBox, System};
 

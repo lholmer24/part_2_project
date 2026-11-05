@@ -157,13 +157,15 @@ fn run_rejects_bad_round_count() {
 }
 
 #[test]
-fn writes_csv_file_under_results() {
-    let path = std::path::Path::new("results").join("harness-test.csv");
+fn writes_csv_file_and_creates_parent() {
+    let dir = std::env::temp_dir().join("harness-csv-test");
+    let _ = std::fs::remove_dir_all(&dir);
+    let path = dir.join("nested").join("run.csv");
     let result = sweep_result();
 
     harness::write_csv_file(&path, &result).expect("write CSV file");
     let text = std::fs::read_to_string(&path).expect("read CSV file");
-    let _ = std::fs::remove_file(&path);
+    let _ = std::fs::remove_dir_all(&dir);
 
     assert_eq!(text.lines().next(), Some(CSV_HEADER));
 }

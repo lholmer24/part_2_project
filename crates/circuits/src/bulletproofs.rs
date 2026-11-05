@@ -5,7 +5,7 @@
 use std::borrow::BorrowMut;
 
 use bulletproofs_lib::r1cs::{Prover, R1CSError, Variable, Verifier};
-use curve25519_dalek::scalar::Scalar;
+use curve25519_dalek_v3::scalar::Scalar;
 use merlin::Transcript;
 use mimc::MimcParams;
 

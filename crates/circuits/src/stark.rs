@@ -1,10 +1,11 @@
-//! The MiMC preimage statement as a winterfell AIR.
+//! The MiMC preimage statement as a winterfell AIR and trace.
 //!
 //! Not done yet.
 
+use mimc::MimcParams;
 use winterfell::{
     math::{fields::f128::BaseElement, FieldElement, ToElements},
-    Air, AirContext, Assertion, EvaluationFrame, ProofOptions, TraceInfo,
+    Air, AirContext, Assertion, EvaluationFrame, ProofOptions, TraceInfo, TraceTable,
 };
 
 /// Public inputs for the MiMC preimage statement.
@@ -56,4 +57,23 @@ impl Air for MimcAir {
     fn get_assertions(&self) -> Vec<Assertion<Self::BaseField>> {
         todo!("STARK assertions are not done yet")
     }
+}
+
+/// STARK circuit for the MiMC preimage statement.
+#[derive(Clone, Debug)]
+pub struct MimcPreimageCircuit {
+    /// MiMC parameters shared by setup and proving.
+    pub params: MimcParams<BaseElement>,
+    /// Public hash, h.
+    pub hash: BaseElement,
+    /// Private preimage, x. `None` during setup.
+    pub preimage: Option<BaseElement>,
+}
+
+/// Build the execution trace for one MiMC statement.
+///
+/// The adapter calls this inside the timed `prove` call. The body is left for
+/// the implementation.
+pub fn build_trace(_circuit: &MimcPreimageCircuit) -> TraceTable<BaseElement> {
+    todo!("STARK trace generation is not done yet")
 }

@@ -1,7 +1,8 @@
 //! PLONK adapter for the benchmark harness.
 //!
 //! Not done yet. The adapter will hold the universal `PublicParameters`, the
-//! compiled `Prover` and `Verifier`, and the current MiMC statement.
+//! compiled `Prover` and `Verifier`, and the current MiMC statement. The
+//! circuit is `circuits::plonk::MimcPreimageCircuit`.
 
 use crate::{BoxError, ProofBox, System};
 

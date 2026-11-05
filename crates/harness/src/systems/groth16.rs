@@ -6,7 +6,7 @@
 use ark_bls12_381::{Bls12_381, Fr};
 use ark_groth16::{prepare_verifying_key, Groth16, PreparedVerifyingKey, ProvingKey};
 use ark_serialize::CanonicalSerialize;
-use groth16::MimcPreimageCircuit;
+use circuits::groth16::MimcPreimageCircuit;
 use mimc::MimcParams;
 
 use crate::{BoxError, ProofBox, System};

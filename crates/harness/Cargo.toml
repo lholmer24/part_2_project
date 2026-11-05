@@ -11,11 +11,6 @@ ark-bls12-381.workspace = true
 ark-groth16.workspace = true
 ark-serialize.workspace = true
 ark-std.workspace = true
+circuits = { path = "../circuits" }
 mimc.workspace = true
-groth16 = { path = "../groth16" }
 serde_json.workspace = true
-plonk = { path = "../plonk" }
-bulletproofs = { path = "../bulletproofs" }
-stark = { path = "../stark" }
-halo2 = { path = "../halo2" }
-spartan = { path = "../spartan" }

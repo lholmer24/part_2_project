@@ -8,7 +8,7 @@ use ark_groth16::{prepare_verifying_key, Groth16, PreparedVerifyingKey, Proof};
 use ark_relations::gr1cs::{ConstraintSynthesizer, ConstraintSystem};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::test_rng;
-use groth16::MimcPreimageCircuit;
+use circuits::groth16::MimcPreimageCircuit;
 use mimc::MimcParams;
 
 const PREIMAGE: u64 = 12345;

@@ -1,7 +1,8 @@
 //! STARK adapter for the benchmark harness.
 //!
 //! Not done yet. The adapter will hold the proof options and the current MiMC
-//! statement. It has no setup phase and no universal parameters.
+//! statement. It has no setup phase and no universal parameters. The AIR and
+//! trace builder are in `circuits::stark`.
 
 use crate::{BoxError, ProofBox, System};
 

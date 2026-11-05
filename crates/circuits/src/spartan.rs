@@ -2,7 +2,7 @@
 //!
 //! Not done yet.
 
-use curve25519_dalek::scalar::Scalar;
+use curve25519_dalek_v4::scalar::Scalar;
 use mimc::MimcParams;
 use spartan_lib::{InputsAssignment, Instance, VarsAssignment};
 

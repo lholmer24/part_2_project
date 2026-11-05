@@ -1,7 +1,8 @@
 //! Halo2 adapter for the benchmark harness.
 //!
 //! Not done yet. The adapter will hold the IPA `Params`, the proving and
-//! verifying keys, and the current MiMC statement.
+//! verifying keys, and the current MiMC statement. The circuit is
+//! `circuits::halo2::MimcPreimageCircuit`.
 
 use crate::{BoxError, ProofBox, System};
 

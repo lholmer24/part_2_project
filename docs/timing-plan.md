@@ -78,7 +78,7 @@ constraint shape without evaluating the input or witness closures. In proving
 mode it builds the same shape and evaluates the witness. Setup runs once per
 circuit and is amortised; proving runs for every proof.
 
-`crates/groth16` defines only `MimcPreimageCircuit`. The adapter in
+`crates/circuits/src/groth16.rs` defines only `MimcPreimageCircuit`. The adapter in
 `crates/harness/src/systems/groth16.rs` calls arkworks directly.
 
 ## PLONK
@@ -94,7 +94,7 @@ Library: `dusk-plonk` 0.24 over BLS12-381.
 | Timed verify | `Verifier::verify` |
 | Untimed | Proof serialisation and size measurement |
 
-`plonk::MimcPreimageCircuit` implements `dusk_plonk::Circuit`. The adapter is
+`circuits::plonk::MimcPreimageCircuit` implements `dusk_plonk::Circuit`. The adapter is
 `crates/harness/src/systems/plonk.rs`.
 
 ## Bulletproofs
@@ -112,7 +112,8 @@ Library: pinned `bulletproofs` develop revision, R1CS API.
 
 The prover block starts before the constraint list is built and ends after
 `Prover::prove` returns. This includes our constraint construction by design.
-`bulletproofs::constrain_prover` and `bulletproofs::constrain_verifier` add the
+`circuits::bulletproofs::constrain_prover` and
+`circuits::bulletproofs::constrain_verifier` add the
 statement to the prover and verifier R1CS. The adapter creates both and calls
 them inside the timed block.
 
@@ -129,7 +130,7 @@ Library: `winterfell` 0.13 over `f128`.
 | Untimed | Proof serialisation and size measurement |
 
 The AIR is circuit synthesis, so it is timed with the prover. Trace generation
-is part of proving and is also timed. `stark::build_trace` builds the trace; the
+is part of proving and is also timed. `circuits::stark::build_trace` builds the trace; the
 adapter calls the AIR, the trace builder and the winterfell prover inside the
 timed block.
 
@@ -146,7 +147,7 @@ Library: `halo2_proofs` 0.4.1 over Pasta.
 | Timed verify | `verify_proof` |
 | Untimed | Proof serialisation and size measurement |
 
-`halo2::MimcPreimageCircuit` implements `halo2_proofs::plonk::Circuit`. The
+`circuits::halo2::MimcPreimageCircuit` implements `halo2_proofs::plonk::Circuit`. The
 adapter is `crates/harness/src/systems/halo2.rs`.
 
 ## Spartan
@@ -164,7 +165,7 @@ Library: `spartan` 0.9 over Ristretto255.
 
 Spartan has no trusted setup. The timed setup row is the deterministic
 preprocessing: building the matrices and committing to the instance.
-`spartan::build_instance` builds the R1CS instance and assignments; the adapter
+`circuits::spartan::build_instance` builds the R1CS instance and assignments; the adapter
 calls `SNARK::encode` and `SNARK::prove` directly.
 
 ## CSV meaning
@@ -201,12 +202,12 @@ They exclude:
 - universal parameters,
 - serialisation and deserialisation.
 
-## Per-system crates
+## Circuit layout
 
-Each system crate holds the circuit, AIR or constraint layout for that system.
-It holds no setup, prove or verify wrapper. The harness adapter calls the
-proof-system library directly, so each timed call is visible in one adapter
-method.
+One crate, `crates/circuits`, holds the circuit, AIR or constraint layout for
+every system. Each system is one module and one file. The crate holds no setup,
+prove or verify wrapper. The harness adapter calls the proof-system library
+directly, so each timed call is visible in one adapter method.
 
 Bulletproofs, STARK and Spartan keep their constraint, trace or matrix builder
 next to the circuit. The initial builder bodies are `todo!()`. Adapters for
@@ -215,8 +216,8 @@ registered in `harness::systems()`.
 
 A new system follows the same pattern:
 
-1. Add the circuit or AIR to a system crate.
-2. Add the builder for constraints, trace or matrices.
-3. Add an adapter in `crates/harness/src/systems/`.
+1. Add `crates/circuits/src/<system>.rs` and declare it in `lib.rs`.
+2. Add the builder for constraints, trace or matrices in the same file.
+3. Add an adapter in `crates/harness/src/systems/<system>.rs`.
 4. Implement `System`, with no timers in the adapter.
 5. Register the adapter in `harness::systems`.

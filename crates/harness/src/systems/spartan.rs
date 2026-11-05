@@ -1,7 +1,8 @@
 //! Spartan adapter for the benchmark harness.
 //!
 //! Not done yet. The adapter will hold the `SNARKGens`, the encoded instance
-//! and commitment, and the current MiMC statement.
+//! and commitment, and the current MiMC statement. The R1CS builder is in
+//! `circuits::spartan`.
 
 use crate::{BoxError, ProofBox, System};
 
