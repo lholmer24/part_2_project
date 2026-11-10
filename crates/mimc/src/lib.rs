@@ -9,6 +9,7 @@ use std::error::Error;
 use std::fmt;
 use std::fs;
 use std::path::PathBuf;
+use std::sync::Arc;
 
 pub use field::MimcField;
 
@@ -22,8 +23,8 @@ pub struct MimcParams<F> {
     pub rounds: usize,
     /// Round-function exponent, e, with gcd(e, q - 1) = 1.
     pub exponent: u64,
-    /// Round constants c_0, ..., c_{r-1}.
-    pub round_constants: Vec<F>,
+    /// Round constants c_0, ..., c_{r-1}, shared so cloning is cheap.
+    pub round_constants: Arc<[F]>,
 }
 
 impl<F: MimcField> MimcParams<F> {
@@ -32,7 +33,7 @@ impl<F: MimcField> MimcParams<F> {
         Ok(Self {
             rounds,
             exponent,
-            round_constants: load_round_constants(rounds)?,
+            round_constants: load_round_constants(rounds)?.into(),
         })
     }
 }

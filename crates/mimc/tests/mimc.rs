@@ -47,15 +47,16 @@ macro_rules! field_tests {
                     let params = MimcParams::<F>::load(rounds, 5).expect("load params");
 
                     let mut manual = x;
-                    for constant in &params.round_constants {
+                    for constant in params.round_constants.iter() {
                         manual = mimc::round_function(manual, *constant, params.exponent);
                     }
                     assert_eq!(hash(&params, x), manual.add(x));
 
                     // Constants after index r - 1 must not be read.
                     let mut extended = params.clone();
-                    extended.round_constants =
-                        load_round_constants::<F>(rounds + 1).expect("load constants");
+                    extended.round_constants = load_round_constants::<F>(rounds + 1)
+                        .expect("load constants")
+                        .into();
                     assert_eq!(hash(&extended, x), hash(&params, x));
 
                     // One more round does change the hash, so the check above is
@@ -99,6 +100,12 @@ macro_rules! field_tests {
                 assert_eq!(params.rounds, 8);
                 assert_eq!(params.exponent, 5);
                 assert_eq!(params.round_constants.len(), 8);
+
+                let cloned = params.clone();
+                assert!(std::sync::Arc::ptr_eq(
+                    &params.round_constants,
+                    &cloned.round_constants
+                ));
             }
 
             #[test]

@@ -36,7 +36,7 @@ impl ConstraintSynthesizer<Fr> for MimcPreimageCircuit {
         })?;
 
         let mut state = secret.clone();
-        for constant in &params.round_constants {
+        for constant in params.round_constants.iter() {
             state = (state + *constant).pow_by_constant([params.exponent])?;
         }
 
