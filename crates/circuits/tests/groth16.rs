@@ -9,7 +9,7 @@ use ark_relations::gr1cs::{ConstraintSynthesizer, ConstraintSystem};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::test_rng;
 use circuits::groth16::MimcPreimageCircuit;
-use mimc::{MimcParams, MAX_ROUNDS};
+use mimc::{MimcParams, Statement, MAX_ROUNDS};
 
 const PREIMAGE: u64 = 12345;
 
@@ -21,9 +21,11 @@ fn statement(rounds: usize) -> (MimcParams<Fr>, Fr) {
 
 fn circuit(params: MimcParams<Fr>, hash: Fr) -> MimcPreimageCircuit {
     MimcPreimageCircuit {
-        params,
-        hash,
-        preimage: Some(Fr::from(PREIMAGE)),
+        statement: Statement {
+            params,
+            hash,
+            preimage: Some(Fr::from(PREIMAGE)),
+        },
     }
 }
 

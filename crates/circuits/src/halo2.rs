@@ -7,22 +7,15 @@ use halo2_proofs::{
     pasta::Fp,
     plonk::{Circuit, ConstraintSystem, Error},
 };
-use mimc::MimcParams;
 
 /// Halo2 configuration for the MiMC circuit.
 #[derive(Clone, Debug)]
 pub struct Config;
 
 /// Halo2 circuit for the MiMC preimage statement.
-#[derive(Clone, Debug)]
-pub struct MimcPreimageCircuit {
-    /// MiMC parameters shared by setup and proving.
-    pub params: MimcParams<Fp>,
-    /// Public hash, h.
-    pub hash: Fp,
-    /// Private preimage, x. `None` during setup.
-    pub preimage: Option<Fp>,
-}
+///
+/// The shared circuit type is aliased with the Pasta field.
+pub type MimcPreimageCircuit = crate::MimcPreimageCircuit<Fp>;
 
 impl Circuit<Fp> for MimcPreimageCircuit {
     type Config = Config;

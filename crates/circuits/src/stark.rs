@@ -2,7 +2,6 @@
 //!
 //! Not done yet.
 
-use mimc::MimcParams;
 use winterfell::{
     math::{fields::f128::BaseElement, FieldElement, ToElements},
     Air, AirContext, Assertion, EvaluationFrame, ProofOptions, TraceInfo, TraceTable,
@@ -60,15 +59,9 @@ impl Air for MimcAir {
 }
 
 /// STARK circuit for the MiMC preimage statement.
-#[derive(Clone, Debug)]
-pub struct MimcPreimageCircuit {
-    /// MiMC parameters shared by setup and proving.
-    pub params: MimcParams<BaseElement>,
-    /// Public hash, h.
-    pub hash: BaseElement,
-    /// Private preimage, x. `None` during setup.
-    pub preimage: Option<BaseElement>,
-}
+///
+/// The shared circuit type is aliased with the winterfell field.
+pub type MimcPreimageCircuit = crate::MimcPreimageCircuit<BaseElement>;
 
 /// Build the execution trace for one MiMC statement.
 ///

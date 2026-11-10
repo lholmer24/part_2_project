@@ -7,18 +7,11 @@ use std::borrow::BorrowMut;
 use bulletproofs_lib::r1cs::{Prover, R1CSError, Variable, Verifier};
 use curve25519_dalek_v3::scalar::Scalar;
 use merlin::Transcript;
-use mimc::MimcParams;
 
 /// Bulletproofs R1CS circuit for the MiMC preimage statement.
-#[derive(Clone, Debug)]
-pub struct MimcPreimageCircuit {
-    /// MiMC parameters shared by setup and proving.
-    pub params: MimcParams<Scalar>,
-    /// Public hash, h.
-    pub hash: Scalar,
-    /// Private preimage, x. `None` during setup.
-    pub preimage: Option<Scalar>,
-}
+///
+/// The shared circuit type is aliased with the Bulletproofs field.
+pub type MimcPreimageCircuit = crate::MimcPreimageCircuit<Scalar>;
 
 /// Add the MiMC statement to a Bulletproofs R1CS prover.
 ///

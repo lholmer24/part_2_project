@@ -7,7 +7,7 @@ use ark_bls12_381::{Bls12_381, Fr};
 use ark_groth16::{prepare_verifying_key, Groth16, PreparedVerifyingKey, ProvingKey};
 use ark_serialize::CanonicalSerialize;
 use circuits::groth16::MimcPreimageCircuit;
-use mimc::{MimcField, MimcParams};
+use mimc::{MimcField, MimcParams, Statement};
 
 use crate::{BoxError, ProofBox, System};
 
@@ -70,9 +70,11 @@ impl System for Groth16System {
                 None => return Err("groth16 prepare was not run".into()),
             };
             MimcPreimageCircuit {
-                params: prepared.mimc.clone(),
-                hash: prepared.hash,
-                preimage: None,
+                statement: Statement {
+                    params: prepared.mimc.clone(),
+                    hash: prepared.hash,
+                    preimage: None,
+                },
             }
         };
 
@@ -105,9 +107,11 @@ impl System for Groth16System {
         };
 
         let circuit = MimcPreimageCircuit {
-            params: prepared.mimc.clone(),
-            hash: prepared.hash,
-            preimage: Some(prepared.preimage),
+            statement: Statement {
+                params: prepared.mimc.clone(),
+                hash: prepared.hash,
+                preimage: Some(prepared.preimage),
+            },
         };
         let mut rng = ark_std::test_rng();
         let proof = Groth16::<Bls12_381>::create_random_proof_with_reduction(

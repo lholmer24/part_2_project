@@ -4,6 +4,7 @@
 //! proof system. Round constants come from `params/round_constants/`.
 
 pub mod field;
+pub mod statement;
 
 use std::error::Error;
 use std::fmt;
@@ -12,6 +13,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 pub use field::{names as field_names, MimcField};
+pub use statement::Statement;
 
 /// The committed constant files hold 2^15 entries per field.
 pub const MAX_ROUNDS: usize = 1 << 15;

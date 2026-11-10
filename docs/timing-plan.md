@@ -209,6 +209,10 @@ every system. Each system is one module and one file. The crate holds no setup,
 prove or verify wrapper. The harness adapter calls the proof-system library
 directly, so each timed call is visible in one adapter method.
 
+The statement value is `mimc::Statement<F>`. Each system aliases
+`circuits::MimcPreimageCircuit<F>` with its native field, then implements its
+own proof-system trait.
+
 Bulletproofs, STARK and Spartan keep their constraint, trace or matrix builder
 next to the circuit. The initial builder bodies are `todo!()`. Adapters for
 unimplemented systems are declared in `crates/harness/src/systems/` but are not

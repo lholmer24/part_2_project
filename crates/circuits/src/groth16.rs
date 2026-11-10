@@ -6,29 +6,20 @@
 use ark_bls12_381::Fr;
 use ark_r1cs_std::{fields::fp::FpVar, prelude::*};
 use ark_relations::gr1cs::{ConstraintSynthesizer, ConstraintSystemRef, SynthesisError};
-use mimc::MimcParams;
+use mimc::Statement;
 
 /// Groth16 circuit for the MiMC preimage statement.
 ///
-/// The parameter layout is shared through [`MimcParams`]. This local wrapper
-/// exists because `ConstraintSynthesizer` is implemented once per system.
-#[derive(Clone, Debug)]
-pub struct MimcPreimageCircuit {
-    /// MiMC parameters shared by setup and proving.
-    pub params: MimcParams<Fr>,
-    /// Public hash, h.
-    pub hash: Fr,
-    /// Private preimage, x. `None` during setup.
-    pub preimage: Option<Fr>,
-}
+/// The shared circuit type is aliased with the Groth16 field.
+pub type MimcPreimageCircuit = crate::MimcPreimageCircuit<Fr>;
 
 impl ConstraintSynthesizer<Fr> for MimcPreimageCircuit {
     fn generate_constraints(self, cs: ConstraintSystemRef<Fr>) -> Result<(), SynthesisError> {
-        let MimcPreimageCircuit {
+        let Statement {
             params,
             hash,
             preimage,
-        } = self;
+        } = self.statement;
 
         let public_hash = FpVar::new_input(cs.clone(), || Ok(hash))?;
         let secret = FpVar::new_witness(cs.clone(), || {

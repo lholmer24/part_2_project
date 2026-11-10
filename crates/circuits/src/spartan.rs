@@ -3,19 +3,12 @@
 //! Not done yet.
 
 use curve25519_dalek_v4::scalar::Scalar;
-use mimc::MimcParams;
 use spartan_lib::{InputsAssignment, Instance, VarsAssignment};
 
 /// Spartan R1CS circuit for the MiMC preimage statement.
-#[derive(Clone, Debug)]
-pub struct MimcPreimageCircuit {
-    /// MiMC parameters shared by setup and proving.
-    pub params: MimcParams<Scalar>,
-    /// Public hash, h.
-    pub hash: Scalar,
-    /// Private preimage, x. `None` during setup.
-    pub preimage: Option<Scalar>,
-}
+///
+/// The shared circuit type is aliased with the Spartan field.
+pub type MimcPreimageCircuit = crate::MimcPreimageCircuit<Scalar>;
 
 /// R1CS instance and assignments for one MiMC statement.
 pub struct MimcInstance {
