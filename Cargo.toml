@@ -13,8 +13,7 @@ publish = false
 mimc = { path = "crates/mimc" }
 
 # arkworks 0.6 is the current release line. Exact versions are pinned here and
-# transitively by the committed Cargo.lock. The `parallel` feature is disabled
-# everywhere because the benchmark runs single-threaded.
+# transitively by the committed Cargo.lock.
 ark-bls12-381 = { version = "=0.6.0", default-features = false, features = ["curve", "std"] }
 ark-ff = { version = "=0.6.0", default-features = false, features = ["std"] }
 ark-groth16 = { version = "=0.6.0", default-features = false, features = ["r1cs", "std"] }
@@ -23,9 +22,7 @@ ark-r1cs-std = { version = "=0.6.0", default-features = false, features = ["std"
 ark-serialize = { version = "=0.6.0", default-features = false, features = ["std"] }
 ark-std = { version = "=0.6.0", default-features = false, features = ["std"] }
 
-# The remaining systems use exact versions. `dusk-plonk` uses `alloc` rather
-# than `std` because its `std` feature enables rayon; the other crates keep
-# their single-threaded feature sets.
+# The remaining systems use exact versions and minimal feature sets.
 dusk-plonk = { version = "=0.24.0", default-features = false, features = ["alloc"] }
 winterfell = { version = "=0.13.1", default-features = false, features = ["std"] }
 winter-math = { version = "=0.13.1", default-features = false, features = ["std"] }
