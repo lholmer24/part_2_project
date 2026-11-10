@@ -31,7 +31,7 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 pub use placeholder::PlaceholderSystem;
-pub use systems::Groth16System;
+pub use systems::{Groth16System, PlonkSystem};
 
 /// Boxed error returned by a system adapter.
 pub type BoxError = Box<dyn StdError + Send + Sync>;
@@ -290,7 +290,7 @@ pub fn default_output_path() -> PathBuf {
 /// [`PlaceholderSystem`] is intentionally not registered. Tests pass it to
 /// [`run_systems`] directly so its rows never reach a real dataset.
 pub fn systems() -> Vec<Box<dyn System>> {
-    vec![Box::new(Groth16System::new())]
+    vec![Box::new(Groth16System::new()), Box::new(PlonkSystem::new())]
 }
 
 /// Run the configured sweep with the registered systems.

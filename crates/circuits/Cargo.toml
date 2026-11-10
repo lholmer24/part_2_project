@@ -24,3 +24,5 @@ winterfell.workspace = true
 ark-groth16.workspace = true
 ark-serialize.workspace = true
 ark-std.workspace = true
+dusk-bytes.workspace = true
+rand_core.workspace = true

@@ -24,6 +24,13 @@ ark-std = { version = "=0.6.0", default-features = false, features = ["std"] }
 
 # The remaining systems use exact versions and minimal feature sets.
 dusk-plonk = { version = "=0.24.0", default-features = false, features = ["alloc"] }
+# dusk-plonk's scalar field type. Kept separate so `mimc` can adapt the field
+# without depending on the whole prover. Default features include `parallel`,
+# so they are disabled here as everywhere else.
+dusk-bls12_381 = { version = "=0.16.0", default-features = false }
+dusk-bytes = { version = "=0.1.8" }
+# dusk-plonk takes `RngCore + CryptoRng` from rand_core 0.6.
+rand_core = { version = "=0.6.4", features = ["getrandom"] }
 winterfell = { version = "=0.13.1", default-features = false, features = ["std"] }
 winter-math = { version = "=0.13.1", default-features = false, features = ["std"] }
 halo2_proofs = { version = "=0.4.1", default-features = false, features = ["batch"] }

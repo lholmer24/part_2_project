@@ -12,5 +12,8 @@ ark-groth16.workspace = true
 ark-serialize.workspace = true
 ark-std.workspace = true
 circuits = { path = "../circuits" }
+dusk-bytes.workspace = true
+dusk-plonk.workspace = true
 mimc.workspace = true
+rand_core.workspace = true
 serde_json.workspace = true

@@ -125,6 +125,37 @@ impl MimcField for ark_bls12_381::Fr {
     }
 }
 
+// dusk-plonk uses its own BLS12-381 scalar type. It has the same modulus as
+// `ark_bls12_381::Fr`, so it shares the same constant file and field name.
+// `to_bytes` is canonical little-endian, which matches `hex_from_le_bytes`.
+impl MimcField for dusk_bls12_381::BlsScalar {
+    const NAME: &'static str = names::BLS12_381_FR;
+
+    fn zero() -> Self {
+        Self::zero()
+    }
+
+    fn one() -> Self {
+        Self::one()
+    }
+
+    fn from_u64(value: u64) -> Self {
+        Self::from(value)
+    }
+
+    fn add(self, rhs: Self) -> Self {
+        self + rhs
+    }
+
+    fn mul(self, rhs: Self) -> Self {
+        self * rhs
+    }
+
+    fn to_hex(self) -> String {
+        hex_from_le_bytes(&self.to_bytes())
+    }
+}
+
 macro_rules! impl_scalar_field {
     ($field:ty, $name:expr) => {
         impl MimcField for $field {
