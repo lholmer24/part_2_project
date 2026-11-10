@@ -5,6 +5,7 @@
 //! trace builder are in `circuits::stark`.
 
 use crate::{BoxError, ProofBox, System};
+use mimc::field_names::WINTERFELL_F128;
 
 /// Harness adapter for STARK over winterfell `f128`.
 #[derive(Default)]
@@ -23,7 +24,7 @@ impl System for StarkSystem {
     }
 
     fn field(&self) -> &str {
-        "winterfell_f128"
+        WINTERFELL_F128
     }
 
     fn prepare(&mut self, _rounds: usize) -> Result<(), BoxError> {

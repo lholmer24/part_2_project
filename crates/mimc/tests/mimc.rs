@@ -52,19 +52,34 @@ macro_rules! field_tests {
                     }
                     assert_eq!(hash(&params, x), manual.add(x));
 
-                    // Constants after index r - 1 must not be read.
-                    let mut extended = params.clone();
-                    extended.round_constants = load_round_constants::<F>(rounds + 1)
-                        .expect("load constants")
-                        .into();
-                    assert_eq!(hash(&extended, x), hash(&params, x));
-
-                    // One more round does change the hash, so the check above is
-                    // not vacuous for these parameters.
-                    let mut longer = extended.clone();
-                    longer.rounds = rounds + 1;
+                    // One more round does change the hash.
+                    let longer = MimcParams::<F>::new(
+                        rounds + 1,
+                        5,
+                        load_round_constants::<F>(rounds + 1).expect("load constants"),
+                    )
+                    .expect("build longer params");
                     assert_ne!(hash(&longer, x), hash(&params, x));
                 }
+            }
+
+            #[test]
+            fn rejects_mismatched_params() {
+                assert!(matches!(
+                    MimcParams::<F>::new(4, 5, vec![F::zero(); 3]),
+                    Err(mimc::LoadError::CountMismatch {
+                        rounds: 4,
+                        constants: 3
+                    })
+                ));
+                assert!(matches!(
+                    MimcParams::<F>::new(3, 5, vec![F::zero(); 4]),
+                    Err(mimc::LoadError::CountMismatch {
+                        rounds: 3,
+                        constants: 4
+                    })
+                ));
+                assert!(MimcParams::<F>::new(3, 5, vec![F::zero(); 3]).is_ok());
             }
 
             #[test]
@@ -81,7 +96,7 @@ macro_rules! field_tests {
                 ignore = "extended: run with --features extended-tests"
             )]
             fn loads_every_round_count() {
-                for k in 0..=15 {
+                for k in 0..=MAX_ROUNDS.trailing_zeros() {
                     let rounds = 1usize << k;
                     let constants = load_round_constants::<F>(rounds).expect("load constants");
                     assert_eq!(constants.len(), rounds);
@@ -176,7 +191,7 @@ field_tests!(
 
 macro_rules! push_vectors {
     ($request:ident, $inputs:ident, $field:ty) => {{
-        for k in 0..=15 {
+        for k in 0..=MAX_ROUNDS.trailing_zeros() {
             let rounds = 1usize << k;
             let params = MimcParams::<$field>::load(rounds, 5).expect("load params");
             for &x in &$inputs {

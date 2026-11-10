@@ -11,7 +11,7 @@ use std::fs;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-pub use field::MimcField;
+pub use field::{names as field_names, MimcField};
 
 /// The committed constant files hold 2^15 entries per field.
 pub const MAX_ROUNDS: usize = 1 << 15;
@@ -28,13 +28,30 @@ pub struct MimcParams<F> {
 }
 
 impl<F: MimcField> MimcParams<F> {
-    /// Load the constants for round count `rounds` from the shared files.
-    pub fn load(rounds: usize, exponent: u64) -> Result<Self, LoadError> {
+    /// Build parameters from an already loaded constant list.
+    ///
+    /// Returns [`LoadError::CountMismatch`] when the list length is not
+    /// `rounds`, and [`LoadError::BadRounds`] when `rounds` is out of range.
+    pub fn new(rounds: usize, exponent: u64, round_constants: Vec<F>) -> Result<Self, LoadError> {
+        if !(1..=MAX_ROUNDS).contains(&rounds) {
+            return Err(LoadError::BadRounds(rounds));
+        }
+        if round_constants.len() != rounds {
+            return Err(LoadError::CountMismatch {
+                rounds,
+                constants: round_constants.len(),
+            });
+        }
         Ok(Self {
             rounds,
             exponent,
-            round_constants: load_round_constants(rounds)?.into(),
+            round_constants: round_constants.into(),
         })
+    }
+
+    /// Load the constants for round count `rounds` from the shared files.
+    pub fn load(rounds: usize, exponent: u64) -> Result<Self, LoadError> {
+        Self::new(rounds, exponent, load_round_constants(rounds)?)
     }
 }
 
@@ -59,6 +76,13 @@ pub enum LoadError {
         /// Number of constants found.
         found: usize,
     },
+    /// The round count and the supplied constant count disagree.
+    CountMismatch {
+        /// Number of rounds requested.
+        rounds: usize,
+        /// Number of constants supplied.
+        constants: usize,
+    },
 }
 
 impl fmt::Display for LoadError {
@@ -73,6 +97,12 @@ impl fmt::Display for LoadError {
             }
             Self::NotEnough { wanted, found } => {
                 write!(f, "expected {wanted} constants, found {found}")
+            }
+            Self::CountMismatch { rounds, constants } => {
+                write!(
+                    f,
+                    "round count {rounds} does not match {constants} constants"
+                )
             }
         }
     }
@@ -130,6 +160,12 @@ pub fn round_function<F: MimcField>(state: F, constant: F, exponent: u64) -> F {
 
 /// Compute the public hash `E(x) + x` for the given parameters.
 pub fn hash<F: MimcField>(params: &MimcParams<F>, x: F) -> F {
+    debug_assert_eq!(
+        params.rounds,
+        params.round_constants.len(),
+        "round count must match the number of round constants"
+    );
+
     let mut state = x;
     for index in 0..params.rounds {
         let constant: F = params.round_constants[index];

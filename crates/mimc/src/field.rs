@@ -5,6 +5,22 @@
 
 use core::fmt::Write as _;
 
+/// Canonical field names.
+///
+/// These are the file stems in `params/round_constants/` and the values written
+/// to the CSV `field` column. [`MimcField::NAME`] and the harness adapters both
+/// use them, so each name has one definition.
+pub mod names {
+    /// BLS12-381 scalar field, used by Groth16 and PLONK.
+    pub const BLS12_381_FR: &str = "bls12_381_fr";
+    /// Ristretto255 scalar field, used by Bulletproofs and Spartan.
+    pub const RISTRETTO255_SCALAR: &str = "ristretto255_scalar";
+    /// Pasta `Fp`, used by Halo2.
+    pub const PASTA_FP: &str = "pasta_fp";
+    /// winterfell `f128`, used by STARK.
+    pub const WINTERFELL_F128: &str = "winterfell_f128";
+}
+
 /// Small interface over a prime field.
 ///
 /// Implementations adapt one concrete field type. The MiMC code only needs
@@ -81,7 +97,7 @@ fn hex_from_le_bytes(bytes: &[u8]) -> String {
 }
 
 impl MimcField for ark_bls12_381::Fr {
-    const NAME: &'static str = "bls12_381_fr";
+    const NAME: &'static str = names::BLS12_381_FR;
 
     fn zero() -> Self {
         Self::from(0u64)
@@ -110,7 +126,7 @@ impl MimcField for ark_bls12_381::Fr {
 }
 
 macro_rules! impl_scalar_field {
-    ($field:ty, $name:literal) => {
+    ($field:ty, $name:expr) => {
         impl MimcField for $field {
             const NAME: &'static str = $name;
 
@@ -141,11 +157,17 @@ macro_rules! impl_scalar_field {
     };
 }
 
-impl_scalar_field!(curve25519_dalek_v3::scalar::Scalar, "ristretto255_scalar");
-impl_scalar_field!(curve25519_dalek_v4::scalar::Scalar, "ristretto255_scalar");
+impl_scalar_field!(
+    curve25519_dalek_v3::scalar::Scalar,
+    names::RISTRETTO255_SCALAR
+);
+impl_scalar_field!(
+    curve25519_dalek_v4::scalar::Scalar,
+    names::RISTRETTO255_SCALAR
+);
 
 impl MimcField for pasta_curves::Fp {
-    const NAME: &'static str = "pasta_fp";
+    const NAME: &'static str = names::PASTA_FP;
 
     fn zero() -> Self {
         Self::from(0u64)
@@ -174,7 +196,7 @@ impl MimcField for pasta_curves::Fp {
 }
 
 impl MimcField for winter_math::fields::f128::BaseElement {
-    const NAME: &'static str = "winterfell_f128";
+    const NAME: &'static str = names::WINTERFELL_F128;
 
     fn zero() -> Self {
         Self::from(0u64)

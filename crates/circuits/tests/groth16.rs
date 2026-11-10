@@ -9,7 +9,7 @@ use ark_relations::gr1cs::{ConstraintSynthesizer, ConstraintSystem};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::test_rng;
 use circuits::groth16::MimcPreimageCircuit;
-use mimc::MimcParams;
+use mimc::{MimcParams, MAX_ROUNDS};
 
 const PREIMAGE: u64 = 12345;
 
@@ -88,7 +88,7 @@ fn altered_proof_is_rejected() {
 
 #[test]
 fn constraint_count_matches_round_structure() {
-    for k in 0..=15 {
+    for k in 0..=MAX_ROUNDS.trailing_zeros() {
         let rounds = 1usize << k;
         let (params, hash) = statement(rounds);
         let cs = ConstraintSystem::<Fr>::new_ref();

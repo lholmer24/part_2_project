@@ -5,6 +5,7 @@
 //! `circuits::halo2::MimcPreimageCircuit`.
 
 use crate::{BoxError, ProofBox, System};
+use mimc::field_names::PASTA_FP;
 
 /// Harness adapter for Halo2 over Pasta.
 #[derive(Default)]
@@ -23,7 +24,7 @@ impl System for Halo2System {
     }
 
     fn field(&self) -> &str {
-        "pasta_fp"
+        PASTA_FP
     }
 
     fn prepare_universal(&mut self, _max_rounds: usize) -> Result<(), BoxError> {

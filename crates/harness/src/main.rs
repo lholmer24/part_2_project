@@ -84,9 +84,10 @@ fn parse_args<I: Iterator<Item = String>>(mut args: I) -> Result<Option<RunConfi
                 let rounds: usize = text
                     .parse()
                     .map_err(|_| format!("invalid round count: {text}"))?;
-                if rounds == 0 || !rounds.is_power_of_two() || rounds > 1 << 15 {
+                if rounds == 0 || !rounds.is_power_of_two() || rounds > mimc::MAX_ROUNDS {
                     return Err(format!(
-                        "round count must be a power of two in 1..=32768: {rounds}"
+                        "round count must be a power of two in 1..={}: {rounds}",
+                        mimc::MAX_ROUNDS
                     ));
                 }
                 config.rounds.push(rounds);

@@ -224,6 +224,35 @@ fn placeholder_is_not_registered() {
     assert!(!names.iter().any(|name| name == "placeholder"));
 }
 
+#[test]
+fn registered_field_names_are_known() {
+    let known = [
+        mimc::field_names::BLS12_381_FR,
+        mimc::field_names::RISTRETTO255_SCALAR,
+        mimc::field_names::PASTA_FP,
+        mimc::field_names::WINTERFELL_F128,
+    ];
+
+    for system in harness::systems() {
+        assert!(
+            known.contains(&system.field()),
+            "{} has unknown field {}",
+            system.name(),
+            system.field()
+        );
+    }
+}
+
+#[test]
+fn groth16_field_matches_its_field_type() {
+    use mimc::MimcField;
+
+    assert_eq!(
+        harness::Groth16System::new().field(),
+        <ark_bls12_381::Fr as MimcField>::NAME
+    );
+}
+
 #[derive(Default)]
 struct NoSetupSystem;
 

@@ -5,6 +5,7 @@
 //! circuit is `circuits::plonk::MimcPreimageCircuit`.
 
 use crate::{BoxError, ProofBox, System};
+use mimc::field_names::BLS12_381_FR;
 
 /// Harness adapter for PLONK over BLS12-381.
 #[derive(Default)]
@@ -23,7 +24,7 @@ impl System for PlonkSystem {
     }
 
     fn field(&self) -> &str {
-        "bls12_381_fr"
+        BLS12_381_FR
     }
 
     fn prepare_universal(&mut self, _max_rounds: usize) -> Result<(), BoxError> {

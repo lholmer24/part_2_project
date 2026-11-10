@@ -5,6 +5,7 @@
 //! builders are in `circuits::bulletproofs`.
 
 use crate::{BoxError, ProofBox, System};
+use mimc::field_names::RISTRETTO255_SCALAR;
 
 /// Harness adapter for Bulletproofs over Ristretto255.
 #[derive(Default)]
@@ -23,7 +24,7 @@ impl System for BulletproofsSystem {
     }
 
     fn field(&self) -> &str {
-        "ristretto255_scalar"
+        RISTRETTO255_SCALAR
     }
 
     fn prepare_universal(&mut self, _max_rounds: usize) -> Result<(), BoxError> {

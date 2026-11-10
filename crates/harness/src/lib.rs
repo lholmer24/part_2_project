@@ -272,9 +272,11 @@ impl From<serde_json::Error> for Error {
     }
 }
 
-/// The full round-count sweep, `r = 2^k` for `k = 0..15`.
+/// The full round-count sweep, `r = 2^k` up to [`mimc::MAX_ROUNDS`].
 pub fn sweep_rounds() -> Vec<usize> {
-    (0..16).map(|k| 1usize << k).collect()
+    (0..=mimc::MAX_ROUNDS.trailing_zeros())
+        .map(|k| 1usize << k)
+        .collect()
 }
 
 /// Default CSV path, under `results/`.
