@@ -68,10 +68,13 @@ impl System for PlonkSystem {
     }
 
     fn prepare_universal(&mut self, max_rounds: usize) -> Result<(), BoxError> {
-        // The compiler trims the parameters to the next power of two above the
-        // circuit's gate count, so the universal parameters must cover that
-        // size for the largest configuration in the sweep.
-        let max_degree = circuits::plonk::gate_count(max_rounds).next_power_of_two();
+        // Measure the largest circuit instead of trusting the layout formula,
+        // so the parameters always cover the actual gate count.
+        let params = MimcParams::<BlsScalar>::load(max_rounds, 5)
+            .map_err(|error| -> BoxError { Box::new(error) })?;
+        let max_degree = circuits::plonk::circuit_size(&params)
+            .map_err(|error| -> BoxError { Box::new(error) })?
+            .next_power_of_two();
         let public_parameters = PublicParameters::setup(max_degree, &mut OsRng)
             .map_err(|error| -> BoxError { Box::new(error) })?;
         self.public_parameters = Some(public_parameters);

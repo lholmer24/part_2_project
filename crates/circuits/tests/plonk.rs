@@ -4,7 +4,7 @@
 //! harness adapter is tested through the `System` trait in
 //! `crates/harness/tests`.
 
-use circuits::plonk::{gate_count, MimcPreimageCircuit};
+use circuits::plonk::{circuit_size, gate_count, MimcPreimageCircuit};
 use dusk_bytes::Serializable;
 use dusk_plonk::prelude::*;
 use mimc::{MimcParams, Statement, MAX_ROUNDS};
@@ -101,6 +101,12 @@ fn gate_count_matches_round_structure() {
     for k in 0..=MAX_ROUNDS.trailing_zeros() {
         let rounds = 1usize << k;
         let (params, hash) = statement(rounds);
+
+        assert_eq!(
+            circuit_size(&params).expect("measure gate count"),
+            gate_count(rounds)
+        );
+
         let mut composer = Composer::initialized();
         circuit(params, hash, Some(BlsScalar::from(PREIMAGE)))
             .circuit(&mut composer)

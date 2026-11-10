@@ -1,27 +1,6 @@
 //! The MiMC preimage statement as a PLONK circuit.
 //!
-//! # Gate model
-//!
-//! `dusk-plonk` 0.24 is a turbo-PLONK composer. One row has four advice wires
-//! `a`, `b`, `c`, `d` and the arithmetic gate
-//!
-//! ```text
-//! q_M · a · b + q_L · a + q_R · b + q_O · c + q_F · d + q_C + PI = 0
-//! ```
-//!
-//! where `q_M`, `q_L`, `q_R`, `q_O`, `q_F` and `q_C` are selectors on that row
-//! and `PI` is the public-input value on that row. The gate is degree two, so
-//! every other operation must be decomposed into rows of this shape.
-//!
-//! The public API exposes this gate through [`Composer::append_gate`],
-//! [`Composer::gate_add`], [`Composer::gate_mul`] and
-//! [`Composer::append_evaluated_output`]. Custom higher-degree selectors are
-//! crate-private in this version and are not available to a circuit.
-//!
-//! # MiMC round layout
-//!
-//! The project fixes the round exponent to `e = 5`. `(s + c)^5` has
-//! multiplicative depth three, so one round needs three degree-two gates:
+//! One MiMC round `s -> (s + c)^5` is three arithmetic gates:
 //!
 //! ```text
 //! gate 1: t2 = (s + c)^2 = s^2 + 2c·s + c^2
@@ -29,40 +8,16 @@
 //! gate 3: s' = t4·s + c·t4 = t4·(s + c)
 //! ```
 //!
-//! The addition by `c` is folded into gate 1: use `a = b = s`, `q_M = 1`,
-//! `q_L = 2c`, `q_C = c^2` and `q_O = -1` on `t2`. It is folded again into
-//! gate 3: use `a = t4`, `b = s`, `q_M = 1`, `q_L = c` and `q_O = -1`. No
-//! separate witness for `s + c` is needed. Gate 3 must not multiply `t4` by
-//! `t2`, because that gives `(s + c)^6`.
+//! The `+ c` is folded into gate 1 and gate 3, so no separate witness for
+//! `s + c` is needed. Reusing a witness handle between two gates is the copy
+//! constraint between rounds. The final row enforces `state + x - h = 0`, with
+//! `h` the public input and `x` the private preimage.
 //!
-//! A [`Witness`] is a handle, not a value slot. Reusing the same handle in two
-//! gates is how this circuit expresses a copy constraint: the composer's
-//! permutation argument ties the two positions together. Circuit code does not
-//! build the permutation columns itself.
-//!
-//! # Gate count
-//!
-//! Let `r` be the number of rounds.
-//!
-//! ```text
-//! 3r       round gates
-//!  1       final gate: state + x - h = 0
-//!  1       public-input gate binding h
-//!  4       rows added by Composer::initialized before circuit()
-//! ```
-//!
-//! [`gate_count`] is the single source of truth for the size that
-//! `PublicParameters` and the compiler must cover.
-//!
-//! # Witness values during setup
-//!
-//! The compiler runs [`Circuit::circuit`] to learn the gate shape, so
-//! `preimage` is `None` during setup. Allocate a placeholder value for the
-//! witness in that case: only the shape and the selectors matter, not the
-//! values. The prover re-runs the same body with the real preimage and must
-//! produce the same number of gates.
+//! The circuit uses `3r + 6` rows for `r` rounds, including the four rows that
+//! `Composer::initialized` adds.
 
 use dusk_plonk::prelude::{BlsScalar, Circuit, Composer, Constraint, Error, Witness};
+use mimc::{MimcParams, Statement};
 
 /// PLONK circuit for the MiMC preimage statement.
 ///
@@ -80,12 +35,31 @@ pub const BASE_GATES: usize = 2;
 /// runs.
 pub const INITIAL_GATES: usize = 4;
 
-/// Total arithmetic gates for `rounds` MiMC rounds.
+/// Expected arithmetic gate count for `rounds` MiMC rounds.
 ///
-/// This is the value that sizes the universal parameters and that the gate
-/// count test asserts against `Composer::constraints()`.
+/// This is the test oracle for the layout. Universal parameters are sized from
+/// [`circuit_size`] instead, so they cannot drift with this formula.
 pub fn gate_count(rounds: usize) -> usize {
     INITIAL_GATES + GATES_PER_ROUND * rounds + BASE_GATES
+}
+
+/// Measure the arithmetic gate count for `params`.
+///
+/// The circuit is synthesised with a placeholder hash and no preimage. Only the
+/// selectors and the row count matter here, so this is the size that the
+/// universal parameters must cover.
+pub fn circuit_size(params: &MimcParams<BlsScalar>) -> Result<usize, Error> {
+    let circuit = MimcPreimageCircuit {
+        statement: Statement {
+            params: params.clone(),
+            hash: BlsScalar::zero(),
+            preimage: None,
+        },
+    };
+
+    let mut composer = Composer::initialized();
+    circuit.circuit(&mut composer)?;
+    Ok(composer.constraints())
 }
 
 /// Append the three gates of one MiMC round and return the new state.
