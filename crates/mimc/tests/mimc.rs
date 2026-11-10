@@ -20,11 +20,51 @@ fn splitmix64(state: &mut u64) -> u64 {
 }
 
 macro_rules! field_tests {
-    ($module:ident, $field:ty) => {
+    ($module:ident, $field:ty, $kat_r1_x0:literal, $kat_r1_x1:literal, $kat_r2_x12345:literal) => {
         mod $module {
             use super::*;
 
             type F = $field;
+
+            /// Known answers, computed by hand as `c_0^5` and `((x + c_0)^5 + c_1)^5 + x`.
+            ///
+            /// The `r = 1, x = 0` case needs only one exponentiation of the first
+            /// committed constant, so it is checkable without this crate.
+            #[test]
+            fn matches_known_answers() {
+                let params = MimcParams::<F>::load(1, 5).expect("load params");
+                assert_eq!(hash(&params, F::zero()).to_hex(), $kat_r1_x0);
+                assert_eq!(hash(&params, F::one()).to_hex(), $kat_r1_x1);
+
+                let params = MimcParams::<F>::load(2, 5).expect("load params");
+                assert_eq!(hash(&params, F::from_u64(12345)).to_hex(), $kat_r2_x12345);
+            }
+
+            #[test]
+            fn hash_uses_exactly_r_constants() {
+                for rounds in [1usize, 2, 8, 16] {
+                    let x = F::from_u64(12345);
+                    let params = MimcParams::<F>::load(rounds, 5).expect("load params");
+
+                    let mut manual = x;
+                    for constant in &params.round_constants {
+                        manual = mimc::round_function(manual, *constant, params.exponent);
+                    }
+                    assert_eq!(hash(&params, x), manual.add(x));
+
+                    // Constants after index r - 1 must not be read.
+                    let mut extended = params.clone();
+                    extended.round_constants =
+                        load_round_constants::<F>(rounds + 1).expect("load constants");
+                    assert_eq!(hash(&extended, x), hash(&params, x));
+
+                    // One more round does change the hash, so the check above is
+                    // not vacuous for these parameters.
+                    let mut longer = extended.clone();
+                    longer.rounds = rounds + 1;
+                    assert_ne!(hash(&longer, x), hash(&params, x));
+                }
+            }
 
             #[test]
             fn loads_common_round_counts() {
@@ -91,11 +131,41 @@ macro_rules! field_tests {
     };
 }
 
-field_tests!(bls12_381, ark_bls12_381::Fr);
-field_tests!(ristretto_v3, curve25519_dalek_v3::scalar::Scalar);
-field_tests!(ristretto_v4, curve25519_dalek_v4::scalar::Scalar);
-field_tests!(pasta, pasta_curves::Fp);
-field_tests!(winterfell, winter_math::fields::f128::BaseElement);
+field_tests!(
+    bls12_381,
+    ark_bls12_381::Fr,
+    "451abcbeb84adc392ebf04af6e16ec281ec563a9f36eccebe0904661485e7616",
+    "28be98fe1ca3089ef838a6ddb4c389162250b10eeb029dde19eb169f1620c4fe",
+    "3996323d8717304ec54709a87dee42870400693586fe350170309d6ca6107a84"
+);
+field_tests!(
+    ristretto_v3,
+    curve25519_dalek_v3::scalar::Scalar,
+    "fc4e16f9980b52c9aac04cd4d5fb8acb4e802f1e153f1f1f881fd2d1dda3fb",
+    "cac9cfa4851e9dd12a32721904a6f7172501b90dcd4819a78705bc5054f2e50",
+    "ad9a666dcedf7bc5ca7a98f6f0e51767495b635514ccce092bea4e30f126bf1"
+);
+field_tests!(
+    ristretto_v4,
+    curve25519_dalek_v4::scalar::Scalar,
+    "fc4e16f9980b52c9aac04cd4d5fb8acb4e802f1e153f1f1f881fd2d1dda3fb",
+    "cac9cfa4851e9dd12a32721904a6f7172501b90dcd4819a78705bc5054f2e50",
+    "ad9a666dcedf7bc5ca7a98f6f0e51767495b635514ccce092bea4e30f126bf1"
+);
+field_tests!(
+    pasta,
+    pasta_curves::Fp,
+    "30e0d075957e1d49c2ec187d375d9322b66bb646e6e926278bb1187a090e7cf2",
+    "2b4b8169a1125953c56cce6ac3db8ab1b5fcbd6492c0c41aa3fa360d8f15a50d",
+    "25ad320f714b9515b1dbe4875f55ade6c671c6306cad447ab57cc3b02d6db3b8"
+);
+field_tests!(
+    winterfell,
+    winter_math::fields::f128::BaseElement,
+    "23da9c42c2ef4c92c7a1713a48ec5388",
+    "e2c645843d1a48081039c89a225286be",
+    "694668a28e95ca21ae77962be0ef9738"
+);
 
 macro_rules! push_vectors {
     ($request:ident, $inputs:ident, $field:ty) => {{
