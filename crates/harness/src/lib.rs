@@ -285,11 +285,10 @@ pub fn default_output_path() -> PathBuf {
 /// All registered systems.
 ///
 /// Add each proof system here once its adapter implements [`System`].
+/// [`PlaceholderSystem`] is intentionally not registered. Tests pass it to
+/// [`run_systems`] directly so its rows never reach a real dataset.
 pub fn systems() -> Vec<Box<dyn System>> {
-    vec![
-        Box::new(PlaceholderSystem::new()),
-        Box::new(Groth16System::new()),
-    ]
+    vec![Box::new(Groth16System::new())]
 }
 
 /// Run the configured sweep with the registered systems.

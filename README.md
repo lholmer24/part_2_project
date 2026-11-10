@@ -28,7 +28,7 @@ cargo test
 cargo test -p mimc --features extended-tests   # full sweep and Rust/Python agreement, about 3 min in debug
 cargo clippy --all-targets
 cargo fmt --all -- --check
-cargo run -p harness -- --system placeholder --rounds 8
+cargo run -p harness -- --system groth16 --rounds 8
 
 cd python
 python3 -m venv .venv

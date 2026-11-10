@@ -6,8 +6,8 @@ use std::time::Duration;
 
 use harness::{
     default_output_path, run, run_systems, sweep_rounds, write_csv, BoxError, Error, Phase,
-    ProofBox, Record, RunConfig, SweepResult, System, CSV_HEADER, DEFAULT_SAMPLES,
-    DEFAULT_SETUP_SAMPLES,
+    PlaceholderSystem, ProofBox, Record, RunConfig, SweepResult, System, CSV_HEADER,
+    DEFAULT_SAMPLES, DEFAULT_SETUP_SAMPLES,
 };
 
 fn record(phase: Phase, sample: usize, time_ns: u64, size: Option<usize>) -> Record {
@@ -79,7 +79,8 @@ fn placeholder_separates_all_three_phases() {
         ..RunConfig::default()
     };
 
-    let result = run(&config).expect("run placeholder");
+    let result =
+        run_systems(vec![Box::new(PlaceholderSystem::new())], &config).expect("run placeholder");
     let count = |phase| {
         result
             .records
@@ -105,7 +106,8 @@ fn warm_up_runs_are_not_recorded() {
         ..RunConfig::default()
     };
 
-    let result = run(&config).expect("run placeholder");
+    let result =
+        run_systems(vec![Box::new(PlaceholderSystem::new())], &config).expect("run placeholder");
     assert_eq!(result.records.len(), 1 + 3 + 3);
     assert!(result.failures.is_empty());
 }
@@ -130,7 +132,10 @@ fn run_rejects_zero_samples() {
         ..RunConfig::default()
     };
 
-    assert!(matches!(run(&config), Err(Error::InvalidConfig(_))));
+    assert!(matches!(
+        run_systems(vec![Box::new(PlaceholderSystem::new())], &config),
+        Err(Error::InvalidConfig(_))
+    ));
 }
 
 #[test]
@@ -142,7 +147,10 @@ fn run_rejects_zero_setup_samples() {
         ..RunConfig::default()
     };
 
-    assert!(matches!(run(&config), Err(Error::InvalidConfig(_))));
+    assert!(matches!(
+        run_systems(vec![Box::new(PlaceholderSystem::new())], &config),
+        Err(Error::InvalidConfig(_))
+    ));
 }
 
 #[test]
@@ -153,7 +161,10 @@ fn run_rejects_bad_round_count() {
         ..RunConfig::default()
     };
 
-    assert!(matches!(run(&config), Err(Error::InvalidConfig(_))));
+    assert!(matches!(
+        run_systems(vec![Box::new(PlaceholderSystem::new())], &config),
+        Err(Error::InvalidConfig(_))
+    ));
 }
 
 #[test]
@@ -201,6 +212,16 @@ fn registry_contains_groth16() {
         .collect();
 
     assert!(names.iter().any(|name| name == "groth16"));
+}
+
+#[test]
+fn placeholder_is_not_registered() {
+    let names: Vec<String> = harness::systems()
+        .iter()
+        .map(|system| system.name().to_string())
+        .collect();
+
+    assert!(!names.iter().any(|name| name == "placeholder"));
 }
 
 #[derive(Default)]
