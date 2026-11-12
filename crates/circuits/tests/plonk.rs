@@ -48,13 +48,15 @@ fn universal_parameters(rounds: usize) -> PublicParameters {
 /// needs.
 ///
 /// The tuple is `(verifier, hash, proof, public_inputs)`.
-fn build(rounds: usize) -> (Verifier, BlsScalar, Proof, Vec<BlsScalar>) {
-    let public_parameters = universal_parameters(rounds);
+fn build_with(
+    public_parameters: &PublicParameters,
+    rounds: usize,
+) -> (Verifier, BlsScalar, Proof, Vec<BlsScalar>) {
     let (params, hash) = statement(rounds);
     let preimage = BlsScalar::from(PREIMAGE);
 
     let (prover, verifier) = Compiler::compile_with_circuit(
-        &public_parameters,
+        public_parameters,
         LABEL,
         &circuit(params.clone(), hash, None),
     )
@@ -67,12 +69,37 @@ fn build(rounds: usize) -> (Verifier, BlsScalar, Proof, Vec<BlsScalar>) {
     (verifier, hash, proof, public_inputs)
 }
 
+/// Compile and prove `rounds` with fresh universal parameters.
+fn build(rounds: usize) -> (Verifier, BlsScalar, Proof, Vec<BlsScalar>) {
+    build_with(&universal_parameters(rounds), rounds)
+}
+
 #[test]
 fn accepts_valid_proof() {
     for rounds in [1usize, 2, 4, 8, 16] {
         let (verifier, hash, proof, public_inputs) = build(rounds);
         assert_eq!(public_inputs, vec![hash]);
         assert!(verifier.verify(&proof, &public_inputs).is_ok());
+    }
+}
+
+#[test]
+#[cfg_attr(
+    not(feature = "extended-tests"),
+    ignore = "extended: run with --features extended-tests"
+)]
+fn accepts_valid_proof_at_every_round_count() {
+    let public_parameters = universal_parameters(MAX_ROUNDS);
+
+    for k in 0..=MAX_ROUNDS.trailing_zeros() {
+        let rounds = 1usize << k;
+        let (verifier, hash, proof, public_inputs) = build_with(&public_parameters, rounds);
+
+        assert_eq!(public_inputs, vec![hash]);
+        assert!(
+            verifier.verify(&proof, &public_inputs).is_ok(),
+            "rounds = {rounds}"
+        );
     }
 }
 

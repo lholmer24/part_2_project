@@ -26,3 +26,7 @@ ark-serialize.workspace = true
 ark-std.workspace = true
 dusk-bytes.workspace = true
 rand_core.workspace = true
+
+[features]
+# Enables the full 16-count proof sweep, which needs the largest SRS.
+extended-tests = []
