@@ -10,8 +10,8 @@
 use bulletproofs_lib::r1cs::{ConstraintSystem, Prover, R1CSProof, Verifier};
 use bulletproofs_lib::{BulletproofGens, PedersenGens};
 use circuits::bulletproofs::{
-    constrain_prover, constrain_verifier, constraint_count, multiplier_capacity, multiplier_count,
-    public_hash_commitment, MimcCommitments, MimcPreimageCircuit,
+    circuit_size, constrain_prover, constrain_verifier, constraint_count, generator_capacity,
+    multiplier_count, public_hash_commitment, MimcCommitments, MimcPreimageCircuit,
 };
 use curve25519_dalek_v3::scalar::Scalar;
 use merlin::Transcript;
@@ -51,11 +51,12 @@ fn circuit(
     }
 }
 
-/// Generators large enough for `rounds` MiMC rounds.
-fn generators(rounds: usize) -> (PedersenGens, BulletproofGens) {
+/// Generators sized from a measured synthesis of the circuit for `params`.
+fn generators(params: &MimcParams<Scalar>) -> (PedersenGens, BulletproofGens) {
+    let size = circuit_size(params).expect("measure circuit size");
     (
         PedersenGens::default(),
-        BulletproofGens::new(multiplier_capacity(rounds), 1),
+        BulletproofGens::new(generator_capacity(size.multipliers), 1),
     )
 }
 
@@ -79,9 +80,14 @@ struct Proof {
     commitments: MimcCommitments,
 }
 
-/// Prove the statement for `rounds` with caller-supplied generators.
-fn build_with(pc_gens: &PedersenGens, bp_gens: &BulletproofGens, rounds: usize) -> Proof {
-    let (params, hash) = statement(rounds);
+/// Prove the statement with caller-supplied generators.
+fn build_with(
+    pc_gens: &PedersenGens,
+    bp_gens: &BulletproofGens,
+    params: MimcParams<Scalar>,
+    hash: Scalar,
+) -> Proof {
+    let rounds = params.rounds;
 
     let mut transcript = prover_transcript(rounds);
     let mut prover = Prover::new(pc_gens, &mut transcript);
@@ -101,10 +107,11 @@ fn build_with(pc_gens: &PedersenGens, bp_gens: &BulletproofGens, rounds: usize) 
     }
 }
 
-/// Prove the statement for `rounds` with fresh generators.
+/// Prove the statement for `rounds` with generators sized from the circuit.
 fn build(rounds: usize) -> (PedersenGens, BulletproofGens, Proof) {
-    let (pc_gens, bp_gens) = generators(rounds);
-    let proof = build_with(&pc_gens, &bp_gens, rounds);
+    let (params, hash) = statement(rounds);
+    let (pc_gens, bp_gens) = generators(&params);
+    let proof = build_with(&pc_gens, &bp_gens, params, hash);
     (pc_gens, bp_gens, proof)
 }
 
@@ -151,11 +158,13 @@ fn accepts_valid_proof() {
     ignore = "extended: run with --features extended-tests"
 )]
 fn accepts_valid_proof_at_every_round_count() {
-    let (pc_gens, bp_gens) = generators(MAX_ROUNDS);
+    let max_params = MimcParams::<Scalar>::load(MAX_ROUNDS, 5).expect("load MiMC params");
+    let (pc_gens, bp_gens) = generators(&max_params);
 
     for k in 0..=MAX_ROUNDS.trailing_zeros() {
         let rounds = 1usize << k;
-        let proof = build_with(&pc_gens, &bp_gens, rounds);
+        let (params, hash) = statement(rounds);
+        let proof = build_with(&pc_gens, &bp_gens, params, hash);
         let hash = proof.hash;
 
         assert!(
@@ -203,6 +212,10 @@ fn multiplier_and_constraint_count_match_round_structure() {
         let rounds = 1usize << k;
         let (params, hash) = statement(rounds);
         let pc_gens = PedersenGens::default();
+
+        let measured = circuit_size(&params).expect("measure circuit size");
+        assert_eq!(measured.multipliers, multiplier_count(rounds));
+        assert_eq!(measured.constraints, constraint_count(rounds));
 
         // Prover side.
         let mut transcript = prover_transcript(rounds);

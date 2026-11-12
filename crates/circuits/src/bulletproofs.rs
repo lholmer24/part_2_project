@@ -65,12 +65,12 @@ pub fn constraint_count(rounds: usize) -> usize {
     CONSTRAINTS_PER_ROUND * rounds + BASE_CONSTRAINTS
 }
 
-/// Smallest power-of-two generator capacity that covers `max_rounds`.
+/// Smallest power-of-two generator capacity that covers `multipliers`.
 ///
 /// [`Prover::prove`] and [`Verifier::verify`] need
-/// `bp_gens.gens_capacity >= multiplier_count(rounds).next_power_of_two()`.
-pub fn multiplier_capacity(max_rounds: usize) -> usize {
-    multiplier_count(max_rounds).next_power_of_two()
+/// `bp_gens.gens_capacity >= multipliers.next_power_of_two()`.
+pub fn generator_capacity(multipliers: usize) -> usize {
+    multipliers.next_power_of_two()
 }
 
 /// Commitments that the prover hands to the verifier.
@@ -121,6 +121,36 @@ pub fn constrain_mimc<CS: ConstraintSystem>(
     }
     cs.constrain(state + preimage - public_hash);
     Ok(())
+}
+
+/// Measured size of one Bulletproofs circuit.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct CircuitSize {
+    /// Number of multiplication gates.
+    pub multipliers: usize,
+    /// Number of linear constraints.
+    pub constraints: usize,
+}
+
+/// Measure the size of the circuit for `params`.
+///
+/// The circuit is synthesised on a prover with placeholder commitments. The
+/// adapter sizes `BulletproofGens` from the measured multiplier count, so a
+/// layout change cannot under-size the generators.
+pub fn circuit_size(params: &MimcParams<Scalar>) -> Result<CircuitSize, R1CSError> {
+    let pc_gens = PedersenGens::default();
+    let mut transcript = Transcript::new(b"mimc-bulletproofs-size");
+    let mut prover = Prover::new(&pc_gens, &mut transcript);
+    let (_, public_hash) = prover.commit(Scalar::zero(), Scalar::zero());
+    let (_, preimage) = prover.commit(Scalar::zero(), Scalar::zero());
+
+    constrain_mimc(&mut prover, params, public_hash, preimage)?;
+    let metrics = prover.metrics();
+
+    Ok(CircuitSize {
+        multipliers: metrics.multipliers,
+        constraints: metrics.constraints,
+    })
 }
 
 /// Commit the statement and add its constraints to a prover.

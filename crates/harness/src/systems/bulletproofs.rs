@@ -16,7 +16,8 @@
 use bulletproofs_lib::r1cs::{Prover, R1CSProof, Verifier};
 use bulletproofs_lib::{BulletproofGens, PedersenGens};
 use circuits::bulletproofs::{
-    constrain_prover, constrain_verifier, multiplier_capacity, MimcCommitments, MimcPreimageCircuit,
+    circuit_size, constrain_prover, constrain_verifier, generator_capacity, MimcCommitments,
+    MimcPreimageCircuit,
 };
 use curve25519_dalek_v3::scalar::Scalar;
 use merlin::Transcript;
@@ -78,10 +79,17 @@ impl System for BulletproofsSystem {
     }
 
     fn prepare_universal(&mut self, max_rounds: usize) -> Result<(), BoxError> {
-        // `BulletproofGens` must cover the padded multiplier count of the
-        // largest circuit in the sweep.
+        // Size the generators from a measured synthesis of the largest circuit,
+        // not from the expected multiplier formula.
+        let mimc = MimcParams::<Scalar>::load(max_rounds, 5)
+            .map_err(|error| -> BoxError { Box::new(error) })?;
+        let size = circuit_size(&mimc).map_err(|error| -> BoxError { Box::new(error) })?;
+
         self.pc_gens = Some(PedersenGens::default());
-        self.bp_gens = Some(BulletproofGens::new(multiplier_capacity(max_rounds), 1));
+        self.bp_gens = Some(BulletproofGens::new(
+            generator_capacity(size.multipliers),
+            1,
+        ));
         Ok(())
     }
 
