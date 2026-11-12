@@ -31,7 +31,7 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 pub use placeholder::PlaceholderSystem;
-pub use systems::{BulletproofsSystem, Groth16System, PlonkSystem};
+pub use systems::{BulletproofsSystem, Groth16System, PlonkSystem, StarkSystem};
 
 /// Boxed error returned by a system adapter.
 pub type BoxError = Box<dyn StdError + Send + Sync>;
@@ -294,6 +294,7 @@ pub fn systems() -> Vec<Box<dyn System>> {
         Box::new(Groth16System::new()),
         Box::new(PlonkSystem::new()),
         Box::new(BulletproofsSystem::new()),
+        Box::new(StarkSystem::new()),
     ]
 }
 

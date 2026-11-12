@@ -225,6 +225,16 @@ fn registry_contains_bulletproofs() {
 }
 
 #[test]
+fn registry_contains_stark() {
+    let names: Vec<String> = harness::systems()
+        .iter()
+        .map(|system| system.name().to_string())
+        .collect();
+
+    assert!(names.iter().any(|name| name == "stark"));
+}
+
+#[test]
 fn placeholder_is_not_registered() {
     let names: Vec<String> = harness::systems()
         .iter()
