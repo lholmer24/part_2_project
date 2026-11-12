@@ -1,27 +1,238 @@
 //! Bulletproofs acceptance and rejection tests.
 //!
-//! Not done yet.
+//! These tests exercise the circuit and the `bulletproofs` R1CS API directly.
+//! The harness adapter is tested through the `System` trait in
+//! `crates/harness/tests`.
+//!
+//! The full 16-count proof sweep is gated behind the `extended-tests` feature
+//! because the largest circuit dominates the runtime.
+
+use bulletproofs_lib::r1cs::{ConstraintSystem, Prover, R1CSProof, Verifier};
+use bulletproofs_lib::{BulletproofGens, PedersenGens};
+use circuits::bulletproofs::{
+    constrain_prover, constrain_verifier, constraint_count, multiplier_capacity, multiplier_count,
+    public_hash_commitment, MimcCommitments, MimcPreimageCircuit,
+};
+use curve25519_dalek_v3::scalar::Scalar;
+use merlin::Transcript;
+use mimc::{MimcParams, Statement, MAX_ROUNDS};
+
+/// Preimage used for every test statement.
+const PREIMAGE: u64 = 12345;
+
+/// Fixed commitment blinding so the tests do not depend on an RNG.
+///
+/// A real prover uses a fresh random blinding for every proof.
+const PREIMAGE_BLINDING: u64 = 0xB11D;
+
+/// Domain-separation label for the test transcript.
+const DOMAIN: &[u8] = b"mimc-bulletproofs-test";
+
+/// The parameters and public hash for one round count.
+fn statement(rounds: usize) -> (MimcParams<Scalar>, Scalar) {
+    let params = MimcParams::<Scalar>::load(rounds, 5).expect("load MiMC params");
+    let hash = mimc::hash(&params, Scalar::from(PREIMAGE));
+    (params, hash)
+}
+
+/// Build one circuit value. `preimage` is `None` only when the witness is
+/// deliberately absent.
+fn circuit(
+    params: &MimcParams<Scalar>,
+    hash: Scalar,
+    preimage: Option<Scalar>,
+) -> MimcPreimageCircuit {
+    MimcPreimageCircuit {
+        statement: Statement {
+            params: params.clone(),
+            hash,
+            preimage,
+        },
+    }
+}
+
+/// Generators large enough for `rounds` MiMC rounds.
+fn generators(rounds: usize) -> (PedersenGens, BulletproofGens) {
+    (
+        PedersenGens::default(),
+        BulletproofGens::new(multiplier_capacity(rounds), 1),
+    )
+}
+
+/// Open a prover transcript bound to the round count.
+fn prover_transcript(rounds: usize) -> Transcript {
+    let mut transcript = Transcript::new(DOMAIN);
+    transcript.append_u64(b"rounds", rounds as u64);
+    transcript
+}
+
+/// Open a verifier transcript bound to the round count.
+fn verifier_transcript(rounds: usize) -> Transcript {
+    prover_transcript(rounds)
+}
+
+/// A proof and the statement data the verifier needs.
+struct Proof {
+    params: MimcParams<Scalar>,
+    hash: Scalar,
+    proof: R1CSProof,
+    commitments: MimcCommitments,
+}
+
+/// Prove the statement for `rounds` with caller-supplied generators.
+fn build_with(pc_gens: &PedersenGens, bp_gens: &BulletproofGens, rounds: usize) -> Proof {
+    let (params, hash) = statement(rounds);
+
+    let mut transcript = prover_transcript(rounds);
+    let mut prover = Prover::new(pc_gens, &mut transcript);
+    let commitments = constrain_prover(
+        &mut prover,
+        &circuit(&params, hash, Some(Scalar::from(PREIMAGE))),
+        Scalar::from(PREIMAGE_BLINDING),
+    )
+    .expect("add prover constraints");
+    let proof = prover.prove(bp_gens).expect("prove");
+
+    Proof {
+        params,
+        hash,
+        proof,
+        commitments,
+    }
+}
+
+/// Prove the statement for `rounds` with fresh generators.
+fn build(rounds: usize) -> (PedersenGens, BulletproofGens, Proof) {
+    let (pc_gens, bp_gens) = generators(rounds);
+    let proof = build_with(&pc_gens, &bp_gens, rounds);
+    (pc_gens, bp_gens, proof)
+}
+
+/// Verify `proof` against `hash`.
+fn verify_with_hash(
+    pc_gens: &PedersenGens,
+    bp_gens: &BulletproofGens,
+    proof: &Proof,
+    hash: Scalar,
+) -> bool {
+    let mut transcript = verifier_transcript(proof.params.rounds);
+    let mut verifier = Verifier::new(&mut transcript);
+
+    if constrain_verifier(
+        pc_gens,
+        &mut verifier,
+        &proof.params,
+        hash,
+        &proof.commitments,
+    )
+    .is_err()
+    {
+        return false;
+    }
+
+    verifier.verify(&proof.proof, pc_gens, bp_gens).is_ok()
+}
 
 #[test]
-#[ignore = "not done yet"]
 fn accepts_valid_proof() {
-    todo!()
+    for rounds in [1usize, 2, 4, 8] {
+        let (pc_gens, bp_gens, proof) = build(rounds);
+        let hash = proof.hash;
+        assert!(
+            verify_with_hash(&pc_gens, &bp_gens, &proof, hash),
+            "rounds = {rounds}"
+        );
+    }
 }
 
 #[test]
-#[ignore = "not done yet"]
+#[cfg_attr(
+    not(feature = "extended-tests"),
+    ignore = "extended: run with --features extended-tests"
+)]
+fn accepts_valid_proof_at_every_round_count() {
+    let (pc_gens, bp_gens) = generators(MAX_ROUNDS);
+
+    for k in 0..=MAX_ROUNDS.trailing_zeros() {
+        let rounds = 1usize << k;
+        let proof = build_with(&pc_gens, &bp_gens, rounds);
+        let hash = proof.hash;
+
+        assert!(
+            verify_with_hash(&pc_gens, &bp_gens, &proof, hash),
+            "rounds = {rounds}"
+        );
+    }
+}
+
+#[test]
 fn rejects_proof_for_wrong_public_hash() {
-    todo!()
+    let (pc_gens, bp_gens, proof) = build(8);
+    let wrong_hash = proof.hash + Scalar::one();
+
+    assert!(!verify_with_hash(&pc_gens, &bp_gens, &proof, wrong_hash));
 }
 
 #[test]
-#[ignore = "not done yet"]
 fn rejects_tampered_proof() {
-    todo!()
+    let (pc_gens, bp_gens, proof) = build(8);
+
+    let mut bytes = proof.proof.to_bytes();
+    let last = bytes.len() - 1;
+    bytes[last] ^= 1;
+
+    let accepted = match R1CSProof::from_bytes(&bytes) {
+        Ok(tampered) => {
+            let tampered = Proof {
+                proof: tampered,
+                ..proof
+            };
+            let hash = tampered.hash;
+            verify_with_hash(&pc_gens, &bp_gens, &tampered, hash)
+        }
+        // A byte flip that breaks the encoding is also a rejection.
+        Err(_) => false,
+    };
+
+    assert!(!accepted);
 }
 
 #[test]
-#[ignore = "not done yet"]
-fn constraint_count_matches_round_structure() {
-    todo!()
+fn multiplier_and_constraint_count_match_round_structure() {
+    for k in 0..=MAX_ROUNDS.trailing_zeros() {
+        let rounds = 1usize << k;
+        let (params, hash) = statement(rounds);
+        let pc_gens = PedersenGens::default();
+
+        // Prover side.
+        let mut transcript = prover_transcript(rounds);
+        let mut prover = Prover::new(&pc_gens, &mut transcript);
+        constrain_prover(
+            &mut prover,
+            &circuit(&params, hash, Some(Scalar::from(PREIMAGE))),
+            Scalar::from(PREIMAGE_BLINDING),
+        )
+        .expect("add prover constraints");
+        let prover_metrics = prover.metrics();
+
+        assert_eq!(prover_metrics.multipliers, multiplier_count(rounds));
+        assert_eq!(prover_metrics.constraints, constraint_count(rounds));
+
+        // Verifier side. Only the commitment points matter for the count, so
+        // the preimage blinding is irrelevant here.
+        let commitments = MimcCommitments {
+            public_hash: public_hash_commitment(&pc_gens, hash),
+            preimage: pc_gens
+                .commit(Scalar::from(PREIMAGE), Scalar::zero())
+                .compress(),
+        };
+        let mut transcript = verifier_transcript(rounds);
+        let mut verifier = Verifier::new(&mut transcript);
+        constrain_verifier(&pc_gens, &mut verifier, &params, hash, &commitments)
+            .expect("add verifier constraints");
+        let verifier_metrics = verifier.metrics();
+
+        assert_eq!(verifier_metrics.multipliers, prover_metrics.multipliers);
+        assert_eq!(verifier_metrics.constraints, prover_metrics.constraints);
+    }
 }
