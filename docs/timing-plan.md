@@ -107,7 +107,7 @@ Library: pinned `bulletproofs` develop revision, R1CS API.
 | Universal, once | `PedersenGens` and `BulletproofGens::new` at maximum size |
 | Timed setup | None; Bulletproofs is transparent |
 | Timed prove | Constraint construction, witness commitments, and `Prover::prove` |
-| Timed verify | `R1CSProof::verify` |
+| Timed verify | `Verifier::verify` |
 | Untimed | Proof serialisation and size measurement |
 
 The prover block starts before the constraint list is built and ends after
@@ -213,8 +213,9 @@ The statement value is `mimc::Statement<F>`. Each system aliases
 `circuits::MimcPreimageCircuit<F>` with its native field, then implements its
 own proof-system trait.
 
-Bulletproofs, STARK and Spartan keep their constraint, trace or matrix builder
-next to the circuit. The initial builder bodies are `todo!()`. Adapters for
+Bulletproofs keeps its R1CS builder next to the circuit. STARK and Spartan
+keep their trace and matrix builders next to their circuits. The initial
+builder bodies for the unimplemented systems are `todo!()`. Adapters for
 unimplemented systems are declared in `crates/harness/src/systems/` but are not
 registered in `harness::systems()`.
 

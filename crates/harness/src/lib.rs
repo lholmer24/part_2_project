@@ -290,7 +290,11 @@ pub fn default_output_path() -> PathBuf {
 /// [`PlaceholderSystem`] is intentionally not registered. Tests pass it to
 /// [`run_systems`] directly so its rows never reach a real dataset.
 pub fn systems() -> Vec<Box<dyn System>> {
-    vec![Box::new(Groth16System::new()), Box::new(PlonkSystem::new())]
+    vec![
+        Box::new(Groth16System::new()),
+        Box::new(PlonkSystem::new()),
+        Box::new(BulletproofsSystem::new()),
+    ]
 }
 
 /// Run the configured sweep with the registered systems.

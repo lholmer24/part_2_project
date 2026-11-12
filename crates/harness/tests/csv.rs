@@ -215,6 +215,16 @@ fn registry_contains_groth16() {
 }
 
 #[test]
+fn registry_contains_bulletproofs() {
+    let names: Vec<String> = harness::systems()
+        .iter()
+        .map(|system| system.name().to_string())
+        .collect();
+
+    assert!(names.iter().any(|name| name == "bulletproofs"));
+}
+
+#[test]
 fn placeholder_is_not_registered() {
     let names: Vec<String> = harness::systems()
         .iter()
