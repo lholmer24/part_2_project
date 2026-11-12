@@ -61,6 +61,24 @@ fn valid_proof_at_selected_round_counts() {
 }
 
 #[test]
+#[cfg_attr(
+    not(feature = "extended-tests"),
+    ignore = "extended: run with --features extended-tests"
+)]
+fn valid_proof_at_every_round_count() {
+    for k in 0..=MAX_ROUNDS.trailing_zeros() {
+        let rounds = 1usize << k;
+        let (prepared_verifying_key, hash, proof) = build(rounds);
+
+        assert!(
+            Groth16::<Bls12_381>::verify_proof(&prepared_verifying_key, &proof, &[hash])
+                .expect("verify"),
+            "rounds = {rounds}"
+        );
+    }
+}
+
+#[test]
 fn wrong_public_hash_is_rejected() {
     let (prepared_verifying_key, hash, proof) = build(8);
     let wrong_hash = hash + Fr::from(1u64);
