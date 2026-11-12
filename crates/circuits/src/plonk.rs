@@ -76,9 +76,18 @@ fn append_round(composer: &mut Composer, state: Witness, constant: BlsScalar) ->
             .b(state),
     );
 
-    let t4 = composer.gate_mul(Constraint::new().mult(1).a(t2).b(t2));
+    let t4 = composer.gate_mul(Constraint::new()
+        .mult(1)
+        .a(t2)
+        .b(t2)
+    );
 
-    composer.gate_mul(Constraint::new().mult(1).left(constant).a(t4).b(state))
+    composer.gate_mul(Constraint::new()
+        .mult(1)
+        .left(constant)
+        .a(t4)
+        .b(state)
+    )
 }
 
 impl Circuit for MimcPreimageCircuit {
