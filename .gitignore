@@ -118,3 +118,12 @@ desktop.ini
 /AGENTS.md
 /MEMORY.md
 /TODO.md
+
+# ======================
+# Benchmark output
+# ======================
+# Generated CSV, metadata and figures are temporary until a final dataset is
+# chosen. Keep the directory tracked with .gitkeep, then force-add the final
+# files: git add -f results/benchmarks.csv results/benchmarks.meta.json
+/results/*
+!/results/.gitkeep
