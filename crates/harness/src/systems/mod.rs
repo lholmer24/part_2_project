@@ -2,6 +2,10 @@
 //!
 //! Unimplemented adapters are declared but not registered in the system list
 //! until their `System` methods are complete.
+//!
+//! Every adapter must implement [`System::prepare_instance`](crate::System::prepare_instance)
+//! with the shared uniform preimage sampler. Do not hard-code a benchmark
+//! preimage; repeated statements reuse the STARK grinding draw.
 
 pub mod bulletproofs;
 pub mod groth16;
