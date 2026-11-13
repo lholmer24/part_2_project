@@ -14,10 +14,7 @@ use mimc::field_names::BLS12_381_FR;
 use mimc::{MimcParams, Statement};
 use rand_core::OsRng;
 
-use crate::{BoxError, ProofBox, System};
-
-/// Preimage used for every PLONK benchmark statement.
-const PREIMAGE: u64 = 12345;
+use crate::{benchmark_seed, BoxError, ProofBox, System};
 
 /// Domain-separation label for the compiled circuit.
 const LABEL: &[u8] = b"mimc-plonk-v1";
@@ -84,7 +81,7 @@ impl System for PlonkSystem {
     fn prepare(&mut self, rounds: usize) -> Result<(), BoxError> {
         let mimc = MimcParams::<BlsScalar>::load(rounds, 5)
             .map_err(|error| -> BoxError { Box::new(error) })?;
-        let preimage = BlsScalar::from(PREIMAGE);
+        let preimage = mimc::uniform_from_seed::<BlsScalar>(&benchmark_seed(rounds, 0));
         let hash = mimc::hash(&mimc, preimage);
 
         self.prepared = Some(Prepared {
@@ -93,6 +90,17 @@ impl System for PlonkSystem {
             preimage,
             keys: None,
         });
+        Ok(())
+    }
+
+    fn prepare_instance(&mut self, rounds: usize, instance: usize) -> Result<(), BoxError> {
+        let prepared = match &mut self.prepared {
+            Some(prepared) => prepared,
+            None => return Err("plonk prepare was not run".into()),
+        };
+        let preimage = mimc::uniform_from_seed::<BlsScalar>(&benchmark_seed(rounds, instance));
+        prepared.hash = mimc::hash(&prepared.mimc, preimage);
+        prepared.preimage = preimage;
         Ok(())
     }
 

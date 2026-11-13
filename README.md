@@ -45,14 +45,20 @@ The harness writes `results/benchmarks.csv` and `results/benchmarks.meta.json`.
 For each system it runs one untimed universal preparation, then, for each round
 count: an untimed loading and reference-hash step, `--setup-samples` timed
 setups if the system has a setup phase, `--warmup` untimed prove/verify pairs,
-and `--samples` timed prove/verify pairs.
+and `--samples` timed prove/verify pairs. Before every proof, an untimed
+`prepare_instance` step selects the preimage for that sample, so the timed
+samples are independent statements and do not reuse a grinding draw.
 
 ```
 system,field,rounds,phase,sample,time_ns,proof_size_bytes
 ```
 
 - `phase` is `setup`, `prove` or `verify`.
-- `sample` is the repetition index within that phase.
+- `sample` is the repetition index within that phase. For `prove` and `verify`
+  it is also the proof-instance index and selects the preimage.
 - `time_ns` is the measured time in nanoseconds.
 - `proof_size_bytes` is present on `prove` rows only.
 - A system without a setup phase has no `setup` rows.
+- The metadata records `preimage_seed_domain` and `preimage_rule`. Each sample
+  uses a uniform native-field preimage expanded from
+  `Blake3(domain || rounds || sample)`.

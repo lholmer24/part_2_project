@@ -9,10 +9,7 @@ use ark_serialize::CanonicalSerialize;
 use circuits::groth16::MimcPreimageCircuit;
 use mimc::{MimcField, MimcParams, Statement};
 
-use crate::{BoxError, ProofBox, System};
-
-/// Preimage used for every Groth16 benchmark statement.
-const PREIMAGE: u64 = 12345;
+use crate::{benchmark_seed, BoxError, ProofBox, System};
 
 struct Keys {
     proving_key: ProvingKey<Bls12_381>,
@@ -51,7 +48,7 @@ impl System for Groth16System {
     fn prepare(&mut self, rounds: usize) -> Result<(), BoxError> {
         let mimc =
             MimcParams::<Fr>::load(rounds, 5).map_err(|error| -> BoxError { Box::new(error) })?;
-        let preimage = Fr::from(PREIMAGE);
+        let preimage = mimc::uniform_from_seed::<Fr>(&benchmark_seed(rounds, 0));
         let hash = mimc::hash(&mimc, preimage);
 
         self.prepared = Some(Prepared {
@@ -60,6 +57,17 @@ impl System for Groth16System {
             preimage,
             keys: None,
         });
+        Ok(())
+    }
+
+    fn prepare_instance(&mut self, rounds: usize, instance: usize) -> Result<(), BoxError> {
+        let prepared = match &mut self.prepared {
+            Some(prepared) => prepared,
+            None => return Err("groth16 prepare was not run".into()),
+        };
+        let preimage = mimc::uniform_from_seed::<Fr>(&benchmark_seed(rounds, instance));
+        prepared.hash = mimc::hash(&prepared.mimc, preimage);
+        prepared.preimage = preimage;
         Ok(())
     }
 

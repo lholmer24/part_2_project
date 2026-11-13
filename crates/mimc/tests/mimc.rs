@@ -83,6 +83,27 @@ macro_rules! field_tests {
             }
 
             #[test]
+            fn uniform_seed_is_deterministic_and_field_specific() {
+                let seed_a = [0u8; 32];
+                let seed_b = [1u8; 32];
+
+                assert_eq!(
+                    mimc::uniform_from_seed::<F>(&seed_a),
+                    mimc::uniform_from_seed::<F>(&seed_a)
+                );
+                assert_ne!(
+                    mimc::uniform_from_seed::<F>(&seed_a),
+                    mimc::uniform_from_seed::<F>(&seed_b)
+                );
+            }
+
+            #[test]
+            fn uniform_bytes_reject_non_canonical_values() {
+                assert_eq!(F::from_uniform_bytes(&[0u8; 32]), Some(F::zero()));
+                assert!(F::from_uniform_bytes(&[0xffu8; 32]).is_none());
+            }
+
+            #[test]
             fn loads_common_round_counts() {
                 for rounds in [1usize, 2, 8, 1024] {
                     let constants = load_round_constants::<F>(rounds).expect("load constants");

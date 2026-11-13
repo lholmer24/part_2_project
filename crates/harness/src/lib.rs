@@ -51,6 +51,21 @@ pub const RESULTS_DIR: &str = "results";
 /// CSV header. Times are nanoseconds and sizes are bytes.
 pub const CSV_HEADER: &str = "system,field,rounds,phase,sample,time_ns,proof_size_bytes";
 
+/// Domain separation for benchmark preimage seeds.
+pub const BENCHMARK_SEED_DOMAIN: &[u8] = b"mimc-benchmark-v1";
+
+/// Deterministic 32-byte seed for one `(rounds, sample)` instance.
+///
+/// The seed is expanded into a uniform native-field element by
+/// [`mimc::uniform_from_seed`].
+pub fn benchmark_seed(rounds: usize, instance: usize) -> [u8; 32] {
+    let mut hasher = blake3::Hasher::new();
+    hasher.update(BENCHMARK_SEED_DOMAIN);
+    hasher.update(&(rounds as u64).to_le_bytes());
+    hasher.update(&(instance as u64).to_le_bytes());
+    *hasher.finalize().as_bytes()
+}
+
 /// One measured phase.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Phase {
@@ -160,6 +175,16 @@ pub trait System {
     /// Load constants and compute the reference hash here. Circuit synthesis,
     /// witness construction and library calls belong in the timed phases.
     fn prepare(&mut self, _rounds: usize) -> Result<(), BoxError> {
+        Ok(())
+    }
+
+    /// Prepare the private preimage for one proof sample.
+    ///
+    /// The harness calls this untimed before each warm-up and timed proof.
+    /// Implementations must update the statement without discarding setup keys
+    /// or universal parameters. The preimage is
+    /// [`mimc::uniform_from_seed`] applied to [`benchmark_seed`].
+    fn prepare_instance(&mut self, _rounds: usize, _instance: usize) -> Result<(), BoxError> {
         Ok(())
     }
 
@@ -413,6 +438,17 @@ pub fn run_systems(
                 }
             }
 
+            if config.warmup > 0 {
+                if let Err(error) = system.prepare_instance(rounds, config.samples) {
+                    result.failures.push(Failure {
+                        system: name.clone(),
+                        rounds,
+                        message: error.to_string(),
+                    });
+                    continue;
+                }
+            }
+
             let mut failed = false;
             for _ in 0..config.warmup {
                 let proof = match system.prove() {
@@ -455,6 +491,15 @@ pub fn run_systems(
             }
 
             for sample in 0..config.samples {
+                if let Err(error) = system.prepare_instance(rounds, sample) {
+                    result.failures.push(Failure {
+                        system: name.clone(),
+                        rounds,
+                        message: error.to_string(),
+                    });
+                    break;
+                }
+
                 let start = Instant::now();
                 let proof = match system.prove() {
                     Ok(proof) => proof,
@@ -618,6 +663,9 @@ pub fn write_run_metadata(path: &Path, config: &RunConfig) -> Result<(), Error> 
         "samples": config.samples,
         "setup_samples": config.setup_samples,
         "warmup": config.warmup,
+        "preimage_seed_domain": std::str::from_utf8(BENCHMARK_SEED_DOMAIN)
+            .unwrap_or("non-utf8"),
+        "preimage_rule": "uniform_from_seed(blake3(domain || rounds_le || sample_le))",
         "csv_file": config.output.file_name().and_then(|name| name.to_str()),
     });
 

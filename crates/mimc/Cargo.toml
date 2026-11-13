@@ -14,6 +14,7 @@ extended-tests = []
 [dependencies]
 ark-bls12-381.workspace = true
 ark-ff.workspace = true
+blake3.workspace = true
 # Bulletproofs 2.0.0 still uses curve25519-dalek 3.x, while Spartan 0.9.0 uses
 # 4.x. Both scalar types need an adapter, so both versions are dependencies.
 curve25519-dalek-v3 = { package = "curve25519-dalek", version = "=3.2.0", default-features = false, features = ["u64_backend"] }

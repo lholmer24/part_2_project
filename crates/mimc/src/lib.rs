@@ -12,7 +12,7 @@ use std::fs;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-pub use field::{names as field_names, MimcField};
+pub use field::{names as field_names, uniform_from_seed, MimcField};
 pub use statement::Statement;
 
 /// The committed constant files hold 2^15 entries per field.

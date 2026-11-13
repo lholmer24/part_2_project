@@ -14,10 +14,7 @@ use mimc::{MimcParams, Statement};
 use winterfell::math::fields::f128::BaseElement;
 use winterfell::{Proof, ProofOptions};
 
-use crate::{BoxError, ProofBox, System};
-
-/// Preimage used for every STARK benchmark statement.
-const PREIMAGE: u64 = 12345;
+use crate::{benchmark_seed, BoxError, ProofBox, System};
 
 struct Prepared {
     mimc: MimcParams<BaseElement>,
@@ -51,7 +48,7 @@ impl System for StarkSystem {
     fn prepare(&mut self, rounds: usize) -> Result<(), BoxError> {
         let mimc = MimcParams::<BaseElement>::load(rounds, 5)
             .map_err(|error| -> BoxError { Box::new(error) })?;
-        let preimage = BaseElement::from(PREIMAGE);
+        let preimage = mimc::uniform_from_seed::<BaseElement>(&benchmark_seed(rounds, 0));
         let hash = mimc::hash(&mimc, preimage);
 
         self.prepared = Some(Prepared {
@@ -60,6 +57,17 @@ impl System for StarkSystem {
             preimage,
             options: stark::proof_options(),
         });
+        Ok(())
+    }
+
+    fn prepare_instance(&mut self, rounds: usize, instance: usize) -> Result<(), BoxError> {
+        let prepared = match &mut self.prepared {
+            Some(prepared) => prepared,
+            None => return Err("stark prepare was not run".into()),
+        };
+        let preimage = mimc::uniform_from_seed::<BaseElement>(&benchmark_seed(rounds, instance));
+        prepared.hash = mimc::hash(&prepared.mimc, preimage);
+        prepared.preimage = preimage;
         Ok(())
     }
 

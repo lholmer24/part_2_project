@@ -12,6 +12,9 @@ publish = false
 # Local shared crate used by every proof system.
 mimc = { path = "crates/mimc" }
 
+# Deterministic XOF used to sample uniform field elements for benchmark inputs.
+blake3 = { version = "=1.8.7" }
+
 # arkworks 0.6 is the current release line. Exact versions are pinned here and
 # transitively by the committed Cargo.lock.
 ark-bls12-381 = { version = "=0.6.0", default-features = false, features = ["curve", "std"] }

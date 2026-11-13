@@ -11,6 +11,7 @@ ark-bls12-381.workspace = true
 ark-groth16.workspace = true
 ark-serialize.workspace = true
 ark-std.workspace = true
+blake3.workspace = true
 bulletproofs_lib.workspace = true
 circuits = { path = "../circuits" }
 curve25519-dalek-v3 = { package = "curve25519-dalek", version = "=3.2.0", default-features = false, features = ["u64_backend"] }

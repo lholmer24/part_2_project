@@ -25,10 +25,7 @@ use mimc::field_names::RISTRETTO255_SCALAR;
 use mimc::{MimcParams, Statement};
 use rand::thread_rng;
 
-use crate::{BoxError, ProofBox, System};
-
-/// Preimage used for every Bulletproofs benchmark statement.
-const PREIMAGE: u64 = 12345;
+use crate::{benchmark_seed, BoxError, ProofBox, System};
 
 /// Domain-separation label for the proof transcript.
 const DOMAIN: &[u8] = b"mimc-bulletproofs-v1";
@@ -96,7 +93,7 @@ impl System for BulletproofsSystem {
     fn prepare(&mut self, rounds: usize) -> Result<(), BoxError> {
         let mimc = MimcParams::<Scalar>::load(rounds, 5)
             .map_err(|error| -> BoxError { Box::new(error) })?;
-        let preimage = Scalar::from(PREIMAGE);
+        let preimage = mimc::uniform_from_seed::<Scalar>(&benchmark_seed(rounds, 0));
         let hash = mimc::hash(&mimc, preimage);
 
         self.prepared = Some(Prepared {
@@ -104,6 +101,17 @@ impl System for BulletproofsSystem {
             hash,
             preimage,
         });
+        Ok(())
+    }
+
+    fn prepare_instance(&mut self, rounds: usize, instance: usize) -> Result<(), BoxError> {
+        let prepared = match &mut self.prepared {
+            Some(prepared) => prepared,
+            None => return Err("bulletproofs prepare was not run".into()),
+        };
+        let preimage = mimc::uniform_from_seed::<Scalar>(&benchmark_seed(rounds, instance));
+        prepared.hash = mimc::hash(&prepared.mimc, preimage);
+        prepared.preimage = preimage;
         Ok(())
     }
 

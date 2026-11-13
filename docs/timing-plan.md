@@ -38,14 +38,18 @@ parameters must be stored outside the per-configuration state.
 | Phase | Timed | Untimed |
 |:---|:---|:---|
 | Universal prepare | Nothing | Reusable parameters at the largest size |
-| Prepare | Nothing | Round constants, reference hash |
+| Prepare | Nothing | Round constants and reference hash for the default instance |
+| Prepare instance | Nothing | Preimage and reference hash for one proof sample |
 | Setup | Adapter call: circuit construction plus library setup | File I/O, universal parameters |
 | Prove | Adapter call: circuit, witness or trace construction plus library prover | Proof serialisation and size measurement |
 | Verify | Adapter call: library verifier | Proof deserialisation |
 | Proof size | Nothing | Serialisation after the prove timer stops |
 
 The reference hash is a statement input, not a proof-system operation. It is
-computed once in prepare. Circuit synthesis is part of the measured work.
+computed once in `prepare` and again in each untimed `prepare_instance`.
+Circuit synthesis is part of the measured work. `prepare_instance` runs before
+every warm-up and timed proof, so each `prove`/`verify` sample uses its own
+uniform native-field preimage and does not repeat a fixed grinding draw.
 
 ## Universal parameters
 

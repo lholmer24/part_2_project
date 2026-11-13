@@ -1,7 +1,7 @@
 //! Harness tests.
 
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use harness::{
@@ -325,6 +325,62 @@ fn system_without_setup_has_no_setup_rows() {
 
     assert_eq!(setups, 0);
     assert_eq!(result.records.len(), 2 + 2);
+}
+
+#[derive(Clone, Default)]
+struct InstanceRecorder {
+    instances: Arc<Mutex<Vec<usize>>>,
+}
+
+impl System for InstanceRecorder {
+    fn name(&self) -> &str {
+        "instance-recorder"
+    }
+
+    fn field(&self) -> &str {
+        "none"
+    }
+
+    fn has_setup(&self) -> bool {
+        false
+    }
+
+    fn setup(&mut self) -> Result<(), BoxError> {
+        unreachable!("instance recorder has no setup")
+    }
+
+    fn prepare_instance(&mut self, _rounds: usize, instance: usize) -> Result<(), BoxError> {
+        self.instances.lock().unwrap().push(instance);
+        Ok(())
+    }
+
+    fn prove(&self) -> Result<ProofBox, BoxError> {
+        Ok(ProofBox::new(0u8))
+    }
+
+    fn proof_size(&self, _proof: &ProofBox) -> Result<usize, BoxError> {
+        Ok(0)
+    }
+
+    fn verify(&self, _proof: &ProofBox) -> Result<bool, BoxError> {
+        Ok(true)
+    }
+}
+
+#[test]
+fn prepare_instance_runs_for_warmup_and_each_sample() {
+    let recorder = InstanceRecorder::default();
+    let instances = recorder.instances.clone();
+    let config = RunConfig {
+        rounds: vec![1],
+        samples: 3,
+        warmup: 1,
+        ..RunConfig::default()
+    };
+
+    run_systems(vec![Box::new(recorder)], &config).expect("run instance recorder");
+
+    assert_eq!(*instances.lock().unwrap(), vec![3, 0, 1, 2]);
 }
 
 #[derive(Clone, Default)]
