@@ -20,14 +20,18 @@ fn halo2_round_trip_through_harness() {
     // prove row and one verify row.
     assert_eq!(result.records.len(), 2 * 3);
 
-    for record in result
+    let sizes: Vec<usize> = result
         .records
         .iter()
         .filter(|record| record.phase == Phase::Prove)
-    {
-        assert!(
-            record.proof_size_bytes.is_some_and(|size| size > 0),
-            "proof size missing"
-        );
-    }
+        .map(|record| record.proof_size_bytes.expect("proof size missing"))
+        .collect();
+
+    // Round counts 1 and 4 use different domains, so the per-domain parameter
+    // selection must produce different IPA proof sizes.
+    assert_eq!(sizes.len(), 2);
+    assert_ne!(
+        sizes[0], sizes[1],
+        "both configurations used the same domain"
+    );
 }

@@ -202,3 +202,23 @@ fn domain_matches_round_structure() {
         );
     }
 }
+
+#[test]
+fn domain_is_minimal() {
+    // The measured domain must be the smallest one that key generation accepts,
+    // otherwise the adapter caches a parameter set larger than necessary.
+    for rounds in [1usize, 2, 4, 8, 16, 1024] {
+        let (params, hash) = statement(rounds);
+        let k = params_k(&params).expect("measure circuit");
+        assert!(k > 0);
+
+        let smaller = Params::<EqAffine>::new(k - 1);
+        let shape = circuit(&params, hash, None);
+
+        assert!(
+            keygen_vk(&smaller, &shape).is_err(),
+            "rounds = {rounds}: the circuit also fits k = {}",
+            k - 1
+        );
+    }
+}

@@ -25,7 +25,7 @@
 //!
 //! Halo2 needs a domain `2^k` before any key can be generated. [`params_k`]
 //! synthesises the circuit with [`MockProver`] and returns the smallest `k` that
-//! the synthesis fits. The adapter builds the IPA parameters from that `k`, so
+//! the synthesis fits. The adapter caches one IPA `Params` per measured `k`, so
 //! the parameters cannot drift from the layout.
 
 use halo2_proofs::{
@@ -54,14 +54,22 @@ pub const MAX_K: u32 = 31;
 /// `Circuit::Config` requires `Clone`, so the configuration derives it.
 #[derive(Clone, Debug)]
 pub struct Config {
+    /// MiMC chain, one row per round state.
     pub state: Column<Advice>,
+    /// Round constant for the row's round.
     pub constant: Column<Fixed>,
+    /// Enables the round gate on round rows.
     pub round: Selector,
+    /// Public hash, bound to the hash cell.
     pub instance: Column<Instance>,
+    /// Private preimage at the finish row, copied from the chain input.
     pub preimage: Column<Advice>,
+    /// Public hash cell at the finish row.
     pub hash: Column<Advice>,
+    /// Enables the statement gate on the finish row.
     pub finish: Selector,
 }
+
 /// Halo2 circuit for the MiMC preimage statement.
 ///
 /// The shared circuit type is aliased with the Pasta field.
@@ -234,10 +242,8 @@ impl Circuit<Fp> for MimcPreimageCircuit {
                         config.state,
                         row + 1,
                         || {
-                            // TODO: the round value for row `row + 1`, computed from
-                            // `state` and `*constant` in `Value<Fp>` arithmetic.
-                            // This closure runs once, in the assignment pass, so the
-                            // chain is not recomputed by the shape pass.
+                            // The closure runs once, in the assignment pass, so
+                            // the chain is not recomputed by the shape pass.
                             let t1 = state + Value::known(*constant);
                             let t2 = t1 * t1;
                             let t4 = t2 * t2;
