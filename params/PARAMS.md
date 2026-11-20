@@ -14,5 +14,9 @@ MiMC uses the native scalar field of each system. The statement is knowledge of
 
 `e = 5` is coprime to `q - 1` in every row, so `x -> x^5` is a permutation.
 
+The Halo2 domain exponent `k` is not fixed here: `circuits::halo2::params_k`
+measures it per configuration from the chosen gate layout, and one IPA `Params`
+is cached for each measured `k`.
+
 The round function is `F_i(x) = (x + c_i)^5`, `E(x) = (F_{r-1} o ... o F_0)(x)`,
 and the public hash is `E(x) + x`.

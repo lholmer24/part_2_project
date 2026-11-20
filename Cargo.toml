@@ -34,6 +34,13 @@ dusk-bls12_381 = { version = "=0.16.0", default-features = false }
 dusk-bytes = { version = "=0.1.8" }
 # dusk-plonk takes `RngCore + CryptoRng` from rand_core 0.6.
 rand_core = { version = "=0.6.4", features = ["getrandom"] }
+# halo2_proofs 0.4.1 takes its prover RNG from the rand 0.10 line. Its `batch`
+# feature already compiles `rand` and `rand_core` 0.10, so these aliases add no
+# new code, only direct access to `UnwrapErr(SysRng)`.
+rand-v10 = { package = "rand", version = "=0.10.3", default-features = false, features = [
+    "sys_rng",
+] }
+rand-core-v10 = { package = "rand_core", version = "=0.10.1", default-features = false }
 winterfell = { version = "=0.13.1", default-features = false, features = ["std"] }
 winter-math = { version = "=0.13.1", default-features = false, features = ["std"] }
 halo2_proofs = { version = "=0.4.1", default-features = false, features = ["batch"] }

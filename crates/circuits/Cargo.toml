@@ -25,6 +25,8 @@ ark-groth16.workspace = true
 ark-serialize.workspace = true
 ark-std.workspace = true
 dusk-bytes.workspace = true
+rand-core-v10.workspace = true
+rand-v10.workspace = true
 rand_core.workspace = true
 
 [features]

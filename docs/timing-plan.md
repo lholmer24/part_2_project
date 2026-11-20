@@ -145,7 +145,7 @@ Library: `halo2_proofs` 0.4.1 over Pasta.
 | Segment | Boundary |
 |:---|:---|
 | Untimed prepare | `MimcParams::load`, `mimc::hash` |
-| Universal, once | `Params::new(k_max)` |
+| Universal, once | `Params::new(k)` for every measured `k` in `1..=k_max` |
 | Timed setup | `keygen_vk` plus `keygen_pk`: circuit synthesis and key generation |
 | Timed prove | `create_proof`: circuit synthesis, witness assignment and proof generation |
 | Timed verify | `verify_proof` |
@@ -153,6 +153,20 @@ Library: `halo2_proofs` 0.4.1 over Pasta.
 
 `circuits::halo2::MimcPreimageCircuit` implements `halo2_proofs::plonk::Circuit`. The
 adapter is `crates/harness/src/systems/halo2.rs`.
+
+`circuits::halo2::params_k` synthesises the circuit with `MockProver` and
+returns the smallest domain exponent `k` that holds it. `prepare_universal`
+builds one `Params` per `k` up to the largest configuration and caches them;
+`prepare` measures `k` for the current round count and selects that set. The
+measurement belongs to parameter selection, so it is untimed like the parameter
+generation itself. Timed setup, prove and verify then scale with the domain the
+circuit needs, which is the same boundary as PLONK's per-circuit KZG trim. IPA
+parameters cannot be trimmed, because `Params::new(k)` derives the generator and
+Lagrange bases for that exact `k`, so one set per `k` is the equivalent.
+
+Halo2 timings remain a staircase in the domain `2^k`, not a function of the
+round count, because consecutive round counts can share a domain. Plot Halo2
+against `2^k` where the analysis compares it with PLONK.
 
 ## Spartan
 

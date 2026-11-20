@@ -17,9 +17,12 @@ circuits = { path = "../circuits" }
 curve25519-dalek-v3 = { package = "curve25519-dalek", version = "=3.2.0", default-features = false, features = ["u64_backend"] }
 dusk-bytes.workspace = true
 dusk-plonk.workspace = true
+halo2_proofs.workspace = true
 merlin = { version = "2", default-features = false }
 mimc.workspace = true
 rand.workspace = true
+rand-core-v10.workspace = true
+rand-v10.workspace = true
 rand_core.workspace = true
 serde_json.workspace = true
 winterfell.workspace = true
