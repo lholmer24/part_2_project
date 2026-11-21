@@ -11,18 +11,22 @@ ark-bls12-381.workspace = true
 ark-groth16.workspace = true
 ark-serialize.workspace = true
 ark-std.workspace = true
+bincode.workspace = true
 blake3.workspace = true
 bulletproofs_lib.workspace = true
 circuits = { path = "../circuits" }
 curve25519-dalek-v3 = { package = "curve25519-dalek", version = "=3.2.0", default-features = false, features = ["u64_backend"] }
+curve25519-dalek-v4 = { package = "curve25519-dalek", version = "=4.1.3", default-features = false }
 dusk-bytes.workspace = true
 dusk-plonk.workspace = true
 halo2_proofs.workspace = true
 merlin = { version = "2", default-features = false }
+merlin-v3.workspace = true
 mimc.workspace = true
 rand.workspace = true
 rand-core-v10.workspace = true
 rand-v10.workspace = true
 rand_core.workspace = true
 serde_json.workspace = true
+spartan_lib.workspace = true
 winterfell.workspace = true

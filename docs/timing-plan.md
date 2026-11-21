@@ -175,7 +175,7 @@ Library: `spartan` 0.9 over Ristretto255.
 | Segment | Boundary |
 |:---|:---|
 | Untimed prepare | `MimcParams::load`, `mimc::hash` |
-| Universal, once | `SNARKGens::new` at maximum size |
+| Universal, once | One `SNARKGens` per measured shape |
 | Timed setup | R1CS matrix construction plus `SNARK::encode` |
 | Timed prove | Witness assignment construction plus `SNARK::prove` |
 | Timed verify | `SNARK::verify` |
@@ -183,8 +183,24 @@ Library: `spartan` 0.9 over Ristretto255.
 
 Spartan has no trusted setup. The timed setup row is the deterministic
 preprocessing: building the matrices and committing to the instance.
-`circuits::spartan::build_instance` builds the R1CS instance and assignments; the adapter
-calls `SNARK::encode` and `SNARK::prove` directly.
+`circuits::spartan::build_shape` builds the R1CS matrices; the adapter turns
+them into an `Instance` and calls `SNARK::encode`. Proving builds the witness
+and input assignments with `circuits::spartan::build_assignments` and calls
+`SNARK::prove`. The tests use `circuits::spartan::build_instance`, which
+combines both builders.
+
+`SNARKGens::new` pads `num_vars` itself but not `num_cons`. It passes
+`num_cons` to `R1CSCommitmentGens`, which calls `num_cons.log_2()`, while
+`Instance::new` pads `num_cons` to a power of two. `prepare_universal` must
+therefore pass `R1CSShape::padded_num_cons()` and the measured
+`R1CSShape::max_nonzeros()`.
+
+Spartan also fixes the generator lengths to one instance shape:
+`MultiCommitGens::commit` asserts `gens_n.n == scalars.len()`, so a max-size
+set cannot serve a smaller instance. `prepare_universal` builds the set for the
+largest round count, and `prepare` caches the set for each smaller round count
+it sees. Building a set is untimed, like universal parameter generation for the
+other systems.
 
 ## CSV meaning
 
@@ -232,9 +248,7 @@ The statement value is `mimc::Statement<F>`. Each system aliases
 own proof-system trait.
 
 Bulletproofs keeps its R1CS builder next to the circuit. STARK and Spartan
-keep their trace and matrix builders next to their circuits. The initial
-builder bodies for the unimplemented systems are `todo!()`. Adapters for
-unimplemented systems are declared in `crates/harness/src/systems/` but are not
+keep their trace and matrix builders next to their circuits. Every adapter is
 registered in `harness::systems()`.
 
 A new system follows the same pattern:

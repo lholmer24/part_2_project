@@ -245,6 +245,16 @@ fn registry_contains_halo2() {
 }
 
 #[test]
+fn registry_contains_spartan() {
+    let names: Vec<String> = harness::systems()
+        .iter()
+        .map(|system| system.name().to_string())
+        .collect();
+
+    assert!(names.iter().any(|name| name == "spartan"));
+}
+
+#[test]
 fn placeholder_is_not_registered() {
     let names: Vec<String> = harness::systems()
         .iter()

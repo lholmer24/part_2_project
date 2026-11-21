@@ -31,7 +31,9 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 pub use placeholder::PlaceholderSystem;
-pub use systems::{BulletproofsSystem, Groth16System, Halo2System, PlonkSystem, StarkSystem};
+pub use systems::{
+    BulletproofsSystem, Groth16System, Halo2System, PlonkSystem, SpartanSystem, StarkSystem,
+};
 
 /// Boxed error returned by a system adapter.
 pub type BoxError = Box<dyn StdError + Send + Sync>;
@@ -311,9 +313,9 @@ pub fn default_output_path() -> PathBuf {
 
 /// All registered systems.
 ///
-/// Add each proof system here once its adapter implements [`System`].
-/// [`PlaceholderSystem`] is intentionally not registered. Tests pass it to
-/// [`run_systems`] directly so its rows never reach a real dataset.
+/// Every benchmarked proof system is registered here. [`PlaceholderSystem`] is
+/// intentionally not registered. Tests pass it to [`run_systems`] directly so
+/// its rows never reach a real dataset.
 pub fn systems() -> Vec<Box<dyn System>> {
     vec![
         Box::new(Groth16System::new()),
@@ -321,6 +323,7 @@ pub fn systems() -> Vec<Box<dyn System>> {
         Box::new(BulletproofsSystem::new()),
         Box::new(StarkSystem::new()),
         Box::new(Halo2System::new()),
+        Box::new(SpartanSystem::new()),
     ]
 }
 
