@@ -513,3 +513,59 @@ fn every_phase_is_timed() {
         );
     }
 }
+
+#[test]
+fn streaming_csv_has_header_and_one_row_per_sample() {
+    let dir = std::env::temp_dir().join("harness-stream-csv-test");
+    let _ = std::fs::remove_dir_all(&dir);
+    let config = RunConfig {
+        systems: vec!["placeholder".to_string()],
+        rounds: vec![1, 2],
+        setup_samples: 2,
+        samples: 3,
+        warmup: 1,
+        output: dir.join("run.csv"),
+    };
+
+    let summary = harness::run_to_csv_systems(vec![Box::new(PlaceholderSystem::new())], &config)
+        .expect("stream to CSV");
+    let text = std::fs::read_to_string(&config.output).expect("read CSV");
+    let _ = std::fs::remove_dir_all(&dir);
+
+    let lines: Vec<&str> = text.lines().collect();
+    assert_eq!(lines.first().copied(), Some(CSV_HEADER));
+    assert_eq!(summary.records, 2 * (2 + 3 + 3));
+    assert_eq!(lines.len(), 1 + summary.records);
+    assert!(summary.failures.is_empty());
+    for line in &lines[1..] {
+        assert_eq!(line.matches(',').count(), 6, "row {line}");
+    }
+}
+
+#[test]
+fn metadata_records_every_registered_system_when_unfiltered() {
+    let dir = std::env::temp_dir().join("harness-metadata-systems-test");
+    let _ = std::fs::remove_dir_all(&dir);
+    let csv = dir.join("run.csv");
+    let metadata = harness::metadata_path(&csv);
+
+    let config = RunConfig {
+        rounds: vec![1],
+        ..RunConfig::default()
+    };
+    harness::write_run_metadata(&metadata, &config).expect("write metadata");
+
+    let text = std::fs::read_to_string(&metadata).expect("read metadata");
+    let _ = std::fs::remove_dir_all(&dir);
+
+    for name in [
+        "groth16",
+        "plonk",
+        "bulletproofs",
+        "stark",
+        "halo2",
+        "spartan",
+    ] {
+        assert!(text.contains(name), "metadata is missing {name}: {text}");
+    }
+}

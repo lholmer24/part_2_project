@@ -18,6 +18,10 @@
 //!
 //! A system with no setup phase produces no `setup` rows. Proof size is
 //! recorded on `prove` rows only.
+//!
+//! [`run`] and [`run_systems`] collect every record in memory. [`run_to_csv`]
+//! and [`run_to_csv_systems`] write and flush one CSV row per sample as it
+//! completes, so an interrupted sweep keeps every completed row.
 
 pub mod placeholder;
 pub mod systems;
@@ -332,13 +336,70 @@ pub fn run(config: &RunConfig) -> Result<SweepResult, Error> {
     run_systems(systems(), config)
 }
 
-/// Run the configured sweep with an explicit system list.
+/// Format a duration for progress output.
+fn format_duration(duration: Duration) -> String {
+    let seconds = duration.as_secs_f64();
+    if seconds < 60.0 {
+        format!("{seconds:.1}s")
+    } else {
+        format!("{:.0}m{:.0}s", (seconds / 60.0).floor(), seconds % 60.0)
+    }
+}
+
+/// Summary of a sweep that streams rows to CSV.
+#[derive(Clone, Debug, Default)]
+pub struct SweepSummary {
+    /// Number of CSV rows written.
+    pub records: usize,
+    /// Configurations that returned an error.
+    pub failures: Vec<Failure>,
+}
+
+/// Record a failed configuration and print it immediately.
 ///
-/// This is the testable entry point. [`run`] calls it with [`systems`].
-pub fn run_systems(
+/// The failure also reaches the caller in the sweep result, but a sweep can
+/// run for hours, so it must be visible while it runs.
+fn push_failure(result: &mut SweepSummary, failure: Failure) {
+    println!("    FAILED: {}", failure.message);
+    result.failures.push(failure);
+}
+
+/// Write one record as one CSV row.
+fn write_record<W: Write>(writer: &mut W, record: &Record) -> Result<(), Error> {
+    match record.proof_size_bytes {
+        Some(size) => writeln!(
+            writer,
+            "{},{},{},{},{},{},{}",
+            record.system,
+            record.field,
+            record.rounds,
+            record.phase,
+            record.sample,
+            record.time.as_nanos(),
+            size,
+        )?,
+        None => writeln!(
+            writer,
+            "{},{},{},{},{},{},",
+            record.system,
+            record.field,
+            record.rounds,
+            record.phase,
+            record.sample,
+            record.time.as_nanos(),
+        )?,
+    }
+    Ok(())
+}
+
+/// Selected systems and round counts from a validated configuration.
+type Selection = (Vec<Box<dyn System>>, Vec<usize>);
+
+/// Validate the configuration and select the systems to run.
+fn select_systems(
     mut registry: Vec<Box<dyn System>>,
     config: &RunConfig,
-) -> Result<SweepResult, Error> {
+) -> Result<Selection, Error> {
     if config.samples == 0 {
         return Err(Error::InvalidConfig(
             "sample count must be at least 1".to_string(),
@@ -381,35 +442,136 @@ pub fn run_systems(
         }
     }
 
+    Ok((registry, rounds))
+}
+
+/// Run the configured sweep with an explicit system list.
+///
+/// This is the testable entry point. [`run`] calls it with [`systems`].
+pub fn run_systems(
+    registry: Vec<Box<dyn System>>,
+    config: &RunConfig,
+) -> Result<SweepResult, Error> {
+    let (registry, rounds) = select_systems(registry, config)?;
+    let mut records = Vec::new();
+    let summary = run_selected(registry, rounds, config, &mut |record| {
+        records.push(record);
+        Ok(())
+    })?;
+    Ok(SweepResult {
+        records,
+        failures: summary.failures,
+    })
+}
+
+/// Run the configured sweep with the registered systems and write CSV rows as
+/// each sample completes.
+pub fn run_to_csv(config: &RunConfig) -> Result<SweepSummary, Error> {
+    run_to_csv_systems(systems(), config)
+}
+
+/// Run the configured sweep with an explicit system list and write CSV rows as
+/// each sample completes.
+///
+/// The header is written before the first measurement and every row is
+/// flushed, so an interrupted sweep keeps every completed row. Call
+/// [`write_run_metadata`] before this function so that a partial CSV has a
+/// sidecar.
+pub fn run_to_csv_systems(
+    registry: Vec<Box<dyn System>>,
+    config: &RunConfig,
+) -> Result<SweepSummary, Error> {
+    let (registry, rounds) = select_systems(registry, config)?;
+    let path = &config.output;
+    if let Some(parent) = path.parent() {
+        if !parent.as_os_str().is_empty() {
+            fs::create_dir_all(parent)?;
+        }
+    }
+    let file = fs::File::create(path)?;
+    let mut writer = BufWriter::new(file);
+    writeln!(writer, "{CSV_HEADER}")?;
+    writer.flush()?;
+
+    run_selected(registry, rounds, config, &mut |record| {
+        write_record(&mut writer, &record)?;
+        writer.flush()?;
+        Ok(())
+    })
+}
+
+/// Measure every selected configuration and send each row to `sink`.
+fn run_selected(
+    registry: Vec<Box<dyn System>>,
+    rounds: Vec<usize>,
+    config: &RunConfig,
+    sink: &mut dyn FnMut(Record) -> Result<(), Error>,
+) -> Result<SweepSummary, Error> {
     let max_rounds = *rounds.iter().max().expect("round list is never empty");
 
-    let mut result = SweepResult::default();
-    for system in &mut registry {
+    let total_systems = registry.len();
+    let sweep_start = Instant::now();
+    println!(
+        "sweep: {total_systems} systems x {} round counts, {} setup samples, {} prove/verify samples, warm-up pairs per configuration: {}",
+        rounds.len(),
+        config.setup_samples,
+        config.samples,
+        config.warmup
+    );
+    println!(
+        "rounds: {}",
+        rounds
+            .iter()
+            .map(usize::to_string)
+            .collect::<Vec<_>>()
+            .join(" ")
+    );
+
+    let mut result = SweepSummary::default();
+    let mut records = 0usize;
+    for (system_index, mut system) in registry.into_iter().enumerate() {
         let name = system.name().to_string();
         let field = system.field().to_string();
+        println!();
+        println!("[{}/{}] {name} ({field})", system_index + 1, total_systems);
 
         // Universal parameters are built once, outside every timer.
-        if let Err(error) = system.prepare_universal(max_rounds) {
-            result.failures.push(Failure {
-                system: name.clone(),
-                rounds: max_rounds,
-                message: error.to_string(),
-            });
+        let universal_start = Instant::now();
+        let universal = system.prepare_universal(max_rounds);
+        let universal_time = universal_start.elapsed();
+        if let Err(error) = universal {
+            push_failure(
+                &mut result,
+                Failure {
+                    system: name.clone(),
+                    rounds: max_rounds,
+                    message: error.to_string(),
+                },
+            );
             continue;
         }
+        println!(
+            "  universal parameters up to r={max_rounds}: {}",
+            format_duration(universal_time)
+        );
 
         for &rounds in &rounds {
+            println!("  r={rounds}");
             if let Err(error) = system.prepare(rounds) {
-                result.failures.push(Failure {
-                    system: name.clone(),
-                    rounds,
-                    message: error.to_string(),
-                });
+                push_failure(
+                    &mut result,
+                    Failure {
+                        system: name.clone(),
+                        rounds,
+                        message: error.to_string(),
+                    },
+                );
                 continue;
             }
 
             // All three phases are timed here, at the same call boundary.
             if system.has_setup() {
+                let setup_start = Instant::now();
                 let mut setup_ok = true;
                 for sample in 0..config.setup_samples {
                     let start = Instant::now();
@@ -417,21 +579,35 @@ pub fn run_systems(
                     let time = start.elapsed();
 
                     match outcome {
-                        Ok(()) => result.records.push(Record {
-                            system: name.clone(),
-                            field: field.clone(),
-                            rounds,
-                            phase: Phase::Setup,
-                            sample,
-                            time,
-                            proof_size_bytes: None,
-                        }),
-                        Err(error) => {
-                            result.failures.push(Failure {
+                        Ok(()) => {
+                            if time >= Duration::from_secs(1) {
+                                println!(
+                                    "      setup sample {}/{}: {}",
+                                    sample + 1,
+                                    config.setup_samples,
+                                    format_duration(time)
+                                );
+                            }
+                            sink(Record {
                                 system: name.clone(),
+                                field: field.clone(),
                                 rounds,
-                                message: error.to_string(),
-                            });
+                                phase: Phase::Setup,
+                                sample,
+                                time,
+                                proof_size_bytes: None,
+                            })?;
+                            records += 1;
+                        }
+                        Err(error) => {
+                            push_failure(
+                                &mut result,
+                                Failure {
+                                    system: name.clone(),
+                                    rounds,
+                                    message: error.to_string(),
+                                },
+                            );
                             setup_ok = false;
                             break;
                         }
@@ -440,30 +616,44 @@ pub fn run_systems(
                 if !setup_ok {
                     continue;
                 }
+                println!(
+                    "    setup {} samples: {}",
+                    config.setup_samples,
+                    format_duration(setup_start.elapsed())
+                );
+            } else {
+                println!("    setup: none");
             }
 
+            let warmup_start = Instant::now();
             if config.warmup > 0 {
                 if let Err(error) = system.prepare_instance(rounds, config.samples) {
-                    result.failures.push(Failure {
-                        system: name.clone(),
-                        rounds,
-                        message: error.to_string(),
-                    });
+                    push_failure(
+                        &mut result,
+                        Failure {
+                            system: name.clone(),
+                            rounds,
+                            message: error.to_string(),
+                        },
+                    );
                     continue;
                 }
             }
 
-            let mut failed = false;
+            let mut warmup_failed = false;
             for _ in 0..config.warmup {
                 let proof = match system.prove() {
                     Ok(proof) => proof,
                     Err(error) => {
-                        result.failures.push(Failure {
-                            system: name.clone(),
-                            rounds,
-                            message: error.to_string(),
-                        });
-                        failed = true;
+                        push_failure(
+                            &mut result,
+                            Failure {
+                                system: name.clone(),
+                                rounds,
+                                message: error.to_string(),
+                            },
+                        );
+                        warmup_failed = true;
                         break;
                     }
                 };
@@ -471,36 +661,56 @@ pub fn run_systems(
                 match system.verify(&proof) {
                     Ok(true) => {}
                     Ok(false) => {
-                        result.failures.push(Failure {
-                            system: name.clone(),
-                            rounds,
-                            message: "proof did not verify".to_string(),
-                        });
-                        failed = true;
+                        push_failure(
+                            &mut result,
+                            Failure {
+                                system: name.clone(),
+                                rounds,
+                                message: "proof did not verify".to_string(),
+                            },
+                        );
+                        warmup_failed = true;
                         break;
                     }
                     Err(error) => {
-                        result.failures.push(Failure {
-                            system: name.clone(),
-                            rounds,
-                            message: error.to_string(),
-                        });
-                        failed = true;
+                        push_failure(
+                            &mut result,
+                            Failure {
+                                system: name.clone(),
+                                rounds,
+                                message: error.to_string(),
+                            },
+                        );
+                        warmup_failed = true;
                         break;
                     }
                 }
             }
-            if failed {
+            if warmup_failed {
                 continue;
             }
+            if config.warmup > 0 {
+                println!(
+                    "    warm-up: {} prove/verify pairs in {}",
+                    config.warmup,
+                    format_duration(warmup_start.elapsed())
+                );
+            }
 
+            let mut prove_total = Duration::ZERO;
+            let mut verify_total = Duration::ZERO;
+            let mut proof_size = 0;
+            let mut proved = 0;
             for sample in 0..config.samples {
                 if let Err(error) = system.prepare_instance(rounds, sample) {
-                    result.failures.push(Failure {
-                        system: name.clone(),
-                        rounds,
-                        message: error.to_string(),
-                    });
+                    push_failure(
+                        &mut result,
+                        Failure {
+                            system: name.clone(),
+                            rounds,
+                            message: error.to_string(),
+                        },
+                    );
                     break;
                 }
 
@@ -508,62 +718,88 @@ pub fn run_systems(
                 let proof = match system.prove() {
                     Ok(proof) => proof,
                     Err(error) => {
-                        result.failures.push(Failure {
-                            system: name.clone(),
-                            rounds,
-                            message: error.to_string(),
-                        });
+                        push_failure(
+                            &mut result,
+                            Failure {
+                                system: name.clone(),
+                                rounds,
+                                message: error.to_string(),
+                            },
+                        );
                         break;
                     }
                 };
                 let prove_time = start.elapsed();
 
                 // Serialisation and size measurement are outside both timers.
-                let proof_size = match system.proof_size(&proof) {
+                let size = match system.proof_size(&proof) {
                     Ok(size) => size,
                     Err(error) => {
-                        result.failures.push(Failure {
-                            system: name.clone(),
-                            rounds,
-                            message: error.to_string(),
-                        });
+                        push_failure(
+                            &mut result,
+                            Failure {
+                                system: name.clone(),
+                                rounds,
+                                message: error.to_string(),
+                            },
+                        );
                         break;
                     }
                 };
+                proof_size = size;
 
                 let start = Instant::now();
                 let valid = match system.verify(&proof) {
                     Ok(valid) => valid,
                     Err(error) => {
-                        result.failures.push(Failure {
-                            system: name.clone(),
-                            rounds,
-                            message: error.to_string(),
-                        });
+                        push_failure(
+                            &mut result,
+                            Failure {
+                                system: name.clone(),
+                                rounds,
+                                message: error.to_string(),
+                            },
+                        );
                         break;
                     }
                 };
                 let verify_time = start.elapsed();
 
                 if !valid {
-                    result.failures.push(Failure {
-                        system: name.clone(),
-                        rounds,
-                        message: "proof did not verify".to_string(),
-                    });
+                    push_failure(
+                        &mut result,
+                        Failure {
+                            system: name.clone(),
+                            rounds,
+                            message: "proof did not verify".to_string(),
+                        },
+                    );
                     break;
                 }
 
-                result.records.push(Record {
+                if prove_time + verify_time >= Duration::from_secs(1) {
+                    println!(
+                        "      sample {}/{}: prove {}, verify {}",
+                        sample + 1,
+                        config.samples,
+                        format_duration(prove_time),
+                        format_duration(verify_time)
+                    );
+                }
+                prove_total += prove_time;
+                verify_total += verify_time;
+                proved += 1;
+
+                sink(Record {
                     system: name.clone(),
                     field: field.clone(),
                     rounds,
                     phase: Phase::Prove,
                     sample,
                     time: prove_time,
-                    proof_size_bytes: Some(proof_size),
-                });
-                result.records.push(Record {
+                    proof_size_bytes: Some(size),
+                })?;
+                sink(Record {
                     system: name.clone(),
                     field: field.clone(),
                     rounds,
@@ -571,10 +807,26 @@ pub fn run_systems(
                     sample,
                     time: verify_time,
                     proof_size_bytes: None,
-                });
+                })?;
+                records += 2;
             }
+            println!(
+                "    prove {proved}/{}: {}, verify: {}, proof {proof_size} B",
+                config.samples,
+                format_duration(prove_total),
+                format_duration(verify_total)
+            );
         }
     }
+
+    result.records = records;
+    println!();
+    println!(
+        "sweep finished: {} records, {} failures, {}",
+        result.records,
+        result.failures.len(),
+        format_duration(sweep_start.elapsed())
+    );
 
     Ok(result)
 }
@@ -586,29 +838,7 @@ pub fn run_systems(
 pub fn write_csv<W: Write>(mut writer: W, result: &SweepResult) -> Result<(), Error> {
     writeln!(writer, "{CSV_HEADER}")?;
     for record in &result.records {
-        match record.proof_size_bytes {
-            Some(size) => writeln!(
-                writer,
-                "{},{},{},{},{},{},{}",
-                record.system,
-                record.field,
-                record.rounds,
-                record.phase,
-                record.sample,
-                record.time.as_nanos(),
-                size,
-            )?,
-            None => writeln!(
-                writer,
-                "{},{},{},{},{},{},",
-                record.system,
-                record.field,
-                record.rounds,
-                record.phase,
-                record.sample,
-                record.time.as_nanos(),
-            )?,
-        }
+        write_record(&mut writer, record)?;
     }
     Ok(())
 }
@@ -649,6 +879,16 @@ pub fn write_run_metadata(path: &Path, config: &RunConfig) -> Result<(), Error> 
     } else {
         config.rounds.clone()
     };
+    // An empty selector means every registered system, so record the resolved
+    // names rather than an empty list.
+    let system_names = if config.systems.is_empty() {
+        systems()
+            .iter()
+            .map(|system| system.name().to_string())
+            .collect::<Vec<_>>()
+    } else {
+        config.systems.clone()
+    };
     let generated = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
@@ -662,7 +902,7 @@ pub fn write_run_metadata(path: &Path, config: &RunConfig) -> Result<(), Error> 
         "arch": std::env::consts::ARCH,
         "hostname": std::env::var("HOSTNAME").ok(),
         "cpu_model": cpu_model(),
-        "systems": &config.systems,
+        "systems": &system_names,
         "rounds": &rounds,
         "samples": config.samples,
         "setup_samples": config.setup_samples,

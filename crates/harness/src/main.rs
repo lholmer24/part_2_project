@@ -4,7 +4,7 @@ use std::env;
 use std::path::PathBuf;
 use std::process::ExitCode;
 
-use harness::{metadata_path, run, sweep_rounds, write_csv_file, write_run_metadata, RunConfig};
+use harness::{metadata_path, run_to_csv, sweep_rounds, write_run_metadata, RunConfig};
 
 const USAGE: &str = "\
 usage: harness [options]
@@ -34,26 +34,26 @@ fn main() -> ExitCode {
 }
 
 fn execute(config: &RunConfig) -> ExitCode {
-    let result = match run(config) {
-        Ok(result) => result,
-        Err(error) => {
-            eprintln!("harness failed: {error}");
-            return ExitCode::FAILURE;
-        }
-    };
-
-    if let Err(error) = write_csv_file(&config.output, &result) {
-        eprintln!("cannot write {}: {error}", config.output.display());
-        return ExitCode::FAILURE;
-    }
-
+    // The sidecar is written first, so an interrupted sweep still has a
+    // metadata file that describes the partial CSV.
     let metadata = metadata_path(&config.output);
     if let Err(error) = write_run_metadata(&metadata, config) {
         eprintln!("cannot write {}: {error}", metadata.display());
         return ExitCode::FAILURE;
     }
 
-    for failure in &result.failures {
+    let summary = match run_to_csv(config) {
+        Ok(summary) => summary,
+        Err(error) => {
+            eprintln!("harness failed: {error}");
+            if config.output.exists() {
+                eprintln!("partial CSV kept at {}", config.output.display());
+            }
+            return ExitCode::FAILURE;
+        }
+    };
+
+    for failure in &summary.failures {
         eprintln!(
             "{} at {} rounds: {}",
             failure.system, failure.rounds, failure.message
@@ -62,7 +62,7 @@ fn execute(config: &RunConfig) -> ExitCode {
 
     println!(
         "wrote {} rows to {} and metadata to {}",
-        result.records.len(),
+        summary.records,
         config.output.display(),
         metadata.display()
     );
