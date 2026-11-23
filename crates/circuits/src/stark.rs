@@ -268,17 +268,27 @@ pub fn build_trace(circuit: &MimcPreimageCircuit) -> TraceTable<BaseElement> {
     trace
 }
 
+/// Grinding factor for the STARK benchmarks.
+///
+/// The project fixes this at 0. Grinding adds proof-of-work to the prover and
+/// a variable nonce search to every sample. Winterfell adds the grinding bits
+/// to the conjectured security only up to the `f128` modulus, and 42 queries
+/// already reach that ceiling within 2 bits. Grinding 16 therefore cost a
+/// search of about 2^16 hashes per proof and added no estimated security.
+pub const GRINDING_FACTOR: u32 = 0;
+
 /// Proof options for every STARK benchmark.
 ///
-/// The parameters match `params/PARAMS.md`: 42 queries, blowup factor 8,
-/// grinding factor 16, no field extension and Blake3-256. The conjectured
-/// security is `min(127, 3 * 42 + 16) = 127` bits, above the verifier's
-/// 100-bit floor.
+/// The parameters are 42 queries, blowup factor 8, [`GRINDING_FACTOR`], no
+/// field extension and Blake3-256. Winterfell computes the conjectured
+/// security as `min(min(128, 3 * 42 + 0) - 1, 128) = 125` bits, which is above
+/// the verifier's 100-bit floor. Grinding cannot raise this estimate, because
+/// the 128-bit `f128` modulus clamps it at 127 bits.
 pub fn proof_options() -> ProofOptions {
     ProofOptions::new(
         42,
         8,
-        16,
+        GRINDING_FACTOR,
         FieldExtension::None,
         4,
         31,

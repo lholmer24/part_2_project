@@ -49,7 +49,7 @@ The reference hash is a statement input, not a proof-system operation. It is
 computed once in `prepare` and again in each untimed `prepare_instance`.
 Circuit synthesis is part of the measured work. `prepare_instance` runs before
 every warm-up and timed proof, so each `prove`/`verify` sample uses its own
-uniform native-field preimage and does not repeat a fixed grinding draw.
+uniform native-field preimage and does not repeat a fixed statement.
 
 ## Universal parameters
 

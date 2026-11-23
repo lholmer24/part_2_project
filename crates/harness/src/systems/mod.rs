@@ -5,7 +5,7 @@
 //!
 //! Every adapter must implement [`System::prepare_instance`](crate::System::prepare_instance)
 //! with the shared uniform preimage sampler. Do not hard-code a benchmark
-//! preimage; repeated statements reuse the STARK grinding draw.
+//! preimage, so that no two samples repeat the same statement.
 
 pub mod bulletproofs;
 pub mod groth16;
