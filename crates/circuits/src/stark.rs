@@ -1,16 +1,25 @@
 //! Winterfell AIR and trace for the MiMC preimage statement.
 //!
-//! The trace has three columns: the state, a carried copy of `x` and the hash
-//! candidate. Row 0 is `x`, row `i` is `s_i`, and row `r - 1` holds `s_{r-1}`
-//! and the hash. The transition on row `r - 2` performs the final round and
-//! checks
+//! Five columns: `state`, `preimage`, `hash`, `square` and `fourth`. Row `i`
+//! holds `s_i` for `i < r`, so `r` rounds use `r` rows.
 //!
 //! ```text
-//! h = (s_{r-1} + c_{r-1})^5 + x
+//! t2_i   = (s_i + c_i)^2
+//! t4_i   = t2_i^2
+//! s_i+1  = t4_i * (s_i + c_i)                    rows 0 .. r-2
+//! h      = t4_{r-1} * (s_{r-1} + c_{r-1}) + x    checked at row r-2
 //! ```
 //!
-//! and a boundary assertion pins `h` at row `r - 1`. Short traces pad to eight
-//! rows, so the hash check never lands on the exempt final transition.
+//! Winterfell exempts the last transition, so no gate on row `r-1` is
+//! enforced: the check sits on row `r-2` and reads the final round's
+//! intermediates from `next`, together with `c_{r-1}` from the shifted
+//! constant column. For `r = 1` it reads row 0 directly.
+//!
+//! A selector adds one degree, so each round constraint is degree 3: the
+//! constraint evaluation domain is `2n` and the composition polynomial splits
+//! into two columns instead of five.
+
+use std::sync::Arc;
 
 use mimc::MimcParams;
 use winterfell::{
@@ -26,21 +35,27 @@ use winterfell::{
 
 pub const MIN_CONJECTURED_SECURITY_BITS: u32 = 100;
 
+/// The round parameters travel with the public inputs, so `Air::new` does no
+/// file I/O during the timed prove and verify phases.
 #[derive(Clone, Debug)]
 pub struct MimcPublicInputs {
     pub hash: BaseElement,
-    pub rounds: usize,
+    pub params: MimcParams<BaseElement>,
 }
 
 impl MimcPublicInputs {
-    pub fn new(hash: BaseElement, rounds: usize) -> Self {
-        Self { hash, rounds }
+    pub fn new(hash: BaseElement, params: MimcParams<BaseElement>) -> Self {
+        Self { hash, params }
+    }
+
+    pub fn rounds(&self) -> usize {
+        self.params.rounds
     }
 }
 
 impl ToElements<BaseElement> for MimcPublicInputs {
     fn to_elements(&self) -> Vec<BaseElement> {
-        vec![self.hash, BaseElement::from(self.rounds as u64)]
+        vec![self.hash, BaseElement::from(self.params.rounds as u64)]
     }
 }
 
@@ -50,8 +65,12 @@ pub const PREIMAGE_COLUMN: usize = 1;
 
 pub const HASH_COLUMN: usize = 2;
 
+pub const SQUARE_COLUMN: usize = 3;
+
+pub const FOURTH_COLUMN: usize = 4;
+
 pub fn trace_width() -> usize {
-    3
+    5
 }
 
 pub fn trace_length(rounds: usize) -> usize {
@@ -62,10 +81,25 @@ pub fn trace_length(rounds: usize) -> usize {
     rounds.max(8)
 }
 
+/// Winterfell exempts the last transition, so for `r >= 2` the check sits on
+/// row `r - 2` and reads the last round's intermediates from row `r - 1`.
+pub fn hash_check_row(rounds: usize) -> usize {
+    if rounds == 1 {
+        0
+    } else {
+        rounds - 2
+    }
+}
+
+/// Row carrying `h`: the assertion pins it here, while the check reads it
+/// through `next` from [`hash_check_row`].
+pub fn hash_column_row(rounds: usize) -> usize {
+    rounds - 1
+}
+
 pub struct MimcAir {
     context: AirContext<BaseElement>,
     public_inputs: MimcPublicInputs,
-    params: MimcParams<BaseElement>,
 }
 
 impl MimcAir {
@@ -74,7 +108,7 @@ impl MimcAir {
     }
 
     pub fn params(&self) -> &MimcParams<BaseElement> {
-        &self.params
+        &self.public_inputs.params
     }
 }
 
@@ -83,31 +117,33 @@ impl Air for MimcAir {
     type PublicInputs = MimcPublicInputs;
 
     fn new(trace_info: TraceInfo, pub_inputs: Self::PublicInputs, options: ProofOptions) -> Self {
-        let r = pub_inputs.rounds;
         assert_eq!(trace_info.width(), trace_width());
-        assert_eq!(trace_info.length(), trace_length(pub_inputs.rounds));
-
-        let params =
-            MimcParams::<BaseElement>::load(pub_inputs.rounds, 5).expect("load MiMC params");
+        assert_eq!(trace_info.length(), trace_length(pub_inputs.rounds()));
 
         let trace_len = trace_info.length();
-        let round_degree = if r == 1 {
+        let round_degree = TransitionConstraintDegree::with_cycles(2, vec![trace_len]);
+        // With one round the chain selector is empty, so those three
+        // constraints are identically zero and must be declared at degree 1.
+        let chain_degree = if pub_inputs.rounds() == 1 {
             TransitionConstraintDegree::new(1)
         } else {
-            TransitionConstraintDegree::with_cycles(5, vec![trace_len])
+            round_degree.clone()
         };
         let degrees = vec![
             TransitionConstraintDegree::new(1),
             TransitionConstraintDegree::with_cycles(1, vec![trace_len]),
+            chain_degree.clone(),
+            chain_degree.clone(),
+            chain_degree,
+            round_degree.clone(),
+            round_degree.clone(),
             round_degree,
-            TransitionConstraintDegree::with_cycles(5, vec![trace_len]),
         ];
         let context = AirContext::new(trace_info, degrees, 1, options);
 
         Self {
             context,
             public_inputs: pub_inputs,
-            params,
         }
     }
 
@@ -117,10 +153,10 @@ impl Air for MimcAir {
 
     fn get_periodic_column_values(&self) -> Vec<Vec<BaseElement>> {
         let n = self.trace_length();
-        let r = self.params.rounds;
+        let rounds = self.params().rounds;
 
         let padded_constant = |index: usize| {
-            self.params
+            self.params()
                 .round_constants
                 .get(index)
                 .copied()
@@ -133,21 +169,15 @@ impl Air for MimcAir {
                 BaseElement::ZERO
             }
         };
-        let hash_row = if r == 1 { 0 } else { r - 2 };
+        let check_row = hash_check_row(rounds);
 
-        let constants = (0..n).map(&padded_constant).collect();
+        let constants = (0..n).map(padded_constant).collect();
         let next_constants = (0..n).map(|i| padded_constant(i + 1)).collect();
         let first_row = (0..n).map(|i| select(i == 0)).collect();
-        let active_round = (0..n).map(|i| select(i + 1 < r)).collect();
-        let active_hash = (0..n).map(|i| select(i == hash_row)).collect();
+        let chain = (0..n).map(|i| select(i + 1 < rounds)).collect();
+        let last = (0..n).map(|i| select(i == check_row)).collect();
 
-        vec![
-            constants,
-            next_constants,
-            first_row,
-            active_round,
-            active_hash,
-        ]
+        vec![constants, next_constants, first_row, chain, last]
     }
 
     fn evaluate_transition<E: FieldElement<BaseField = Self::BaseField>>(
@@ -156,38 +186,52 @@ impl Air for MimcAir {
         periodic_values: &[E],
         result: &mut [E],
     ) {
-        let r = self.params.rounds;
+        let rounds = self.params().rounds;
 
-        result[0] = frame.next()[PREIMAGE_COLUMN] - frame.current()[PREIMAGE_COLUMN];
-        result[1] =
-            periodic_values[2] * (frame.current()[STATE_COLUMN] - frame.current()[PREIMAGE_COLUMN]);
+        let current = periodic_values[0];
+        let next_constant = periodic_values[1];
+        let first_row = periodic_values[2];
+        let chain = periodic_values[3];
+        let last = periodic_values[4];
 
-        result[2] = periodic_values[3]
-            * (frame.next()[STATE_COLUMN]
-                - (frame.current()[STATE_COLUMN] + periodic_values[0]).exp(5u32.into()));
+        let cur = frame.current();
+        let next = frame.next();
 
-        let (state, constant, preimage, hash) = if r >= 2 {
+        result[0] = next[PREIMAGE_COLUMN] - cur[PREIMAGE_COLUMN];
+        result[1] = first_row * (cur[STATE_COLUMN] - cur[PREIMAGE_COLUMN]);
+        result[2] = chain * (cur[SQUARE_COLUMN] - (cur[STATE_COLUMN] + current).exp(2u32.into()));
+        result[3] = chain * (cur[FOURTH_COLUMN] - cur[SQUARE_COLUMN].exp(2u32.into()));
+        result[4] =
+            chain * (next[STATE_COLUMN] - cur[FOURTH_COLUMN] * (cur[STATE_COLUMN] + current));
+
+        // The last transition is exempt: check the final round here from
+        // `next`, then the hash from those checked cells.
+        let (state, constant, square, fourth, hash) = if rounds >= 2 {
             (
-                frame.next()[STATE_COLUMN],
-                periodic_values[1],
-                frame.next()[PREIMAGE_COLUMN],
-                frame.next()[HASH_COLUMN],
+                next[STATE_COLUMN],
+                next_constant,
+                next[SQUARE_COLUMN],
+                next[FOURTH_COLUMN],
+                next[HASH_COLUMN],
             )
         } else {
             (
-                frame.current()[STATE_COLUMN],
-                periodic_values[0],
-                frame.current()[PREIMAGE_COLUMN],
-                frame.current()[HASH_COLUMN],
+                cur[STATE_COLUMN],
+                current,
+                cur[SQUARE_COLUMN],
+                cur[FOURTH_COLUMN],
+                cur[HASH_COLUMN],
             )
         };
-        result[3] = periodic_values[4] * (hash - ((state + constant).exp(5u32.into()) + preimage));
+        result[5] = last * (square - (state + constant).exp(2u32.into()));
+        result[6] = last * (fourth - square.exp(2u32.into()));
+        result[7] = last * (hash - (fourth * (state + constant) + cur[PREIMAGE_COLUMN]));
     }
 
     fn get_assertions(&self) -> Vec<Assertion<Self::BaseField>> {
         vec![Assertion::single(
             HASH_COLUMN,
-            self.public_inputs.rounds - 1,
+            hash_column_row(self.public_inputs.rounds()),
             self.public_inputs.hash,
         )]
     }
@@ -202,30 +246,41 @@ pub fn build_trace(circuit: &MimcPreimageCircuit) -> TraceTable<BaseElement> {
 
     let x = circuit.statement.preimage.expect("missing MiMC preimage");
     let h = circuit.statement.hash;
-    let params = &circuit.statement.params;
-    let initial_hash = if rounds == 1 { h } else { BaseElement::ZERO };
+    let constants: Arc<[BaseElement]> = circuit.statement.params.round_constants.clone();
 
     let mut trace = TraceTable::new(width, length);
 
     trace.fill(
         |state| {
+            let sum = x + constants[0];
             state[STATE_COLUMN] = x;
             state[PREIMAGE_COLUMN] = x;
-            state[HASH_COLUMN] = initial_hash;
+            state[HASH_COLUMN] = if rounds == 1 { h } else { BaseElement::ZERO };
+            state[SQUARE_COLUMN] = sum.exp(2u32.into());
+            state[FOURTH_COLUMN] = sum.exp(2u32.into()).exp(2u32.into());
         },
         |step, state| {
-            let next_row = step + 1;
-            let in_round = next_row < rounds;
-            let is_hash_row = next_row == rounds - 1;
-
-            let curr_state = state[STATE_COLUMN];
-            state[STATE_COLUMN] = if in_round {
-                (curr_state + params.round_constants[step]).exp(params.exponent as u128)
+            let row = step + 1;
+            if row < rounds {
+                let sum = state[STATE_COLUMN] + constants[step];
+                let next_state = sum.exp(2u32.into()).exp(2u32.into()) * sum;
+                let next_sum = next_state + constants[row];
+                state[STATE_COLUMN] = next_state;
+                state[PREIMAGE_COLUMN] = x;
+                state[HASH_COLUMN] = if row == rounds - 1 {
+                    h
+                } else {
+                    BaseElement::ZERO
+                };
+                state[SQUARE_COLUMN] = next_sum.exp(2u32.into());
+                state[FOURTH_COLUMN] = next_sum.exp(2u32.into()).exp(2u32.into());
             } else {
-                BaseElement::ZERO
-            };
-            state[PREIMAGE_COLUMN] = x;
-            state[HASH_COLUMN] = if is_hash_row { h } else { BaseElement::ZERO };
+                state[STATE_COLUMN] = BaseElement::ZERO;
+                state[PREIMAGE_COLUMN] = x;
+                state[HASH_COLUMN] = BaseElement::ZERO;
+                state[SQUARE_COLUMN] = BaseElement::ZERO;
+                state[FOURTH_COLUMN] = BaseElement::ZERO;
+            }
         },
     );
     trace
@@ -322,7 +377,7 @@ impl Prover for MimcProver {
 
 pub fn prove(circuit: &MimcPreimageCircuit, options: ProofOptions) -> Result<Proof, ProverError> {
     let public_inputs =
-        MimcPublicInputs::new(circuit.statement.hash, circuit.statement.params.rounds);
+        MimcPublicInputs::new(circuit.statement.hash, circuit.statement.params.clone());
     let trace = build_trace(circuit);
     MimcProver::new(options, public_inputs).prove(trace)
 }

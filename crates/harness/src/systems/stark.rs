@@ -103,7 +103,7 @@ impl System for StarkSystem {
         let proof = proof
             .downcast_ref::<Proof>()
             .ok_or("stark proof type mismatch")?;
-        let public_inputs = MimcPublicInputs::new(prepared.hash, prepared.mimc.rounds);
+        let public_inputs = MimcPublicInputs::new(prepared.hash, prepared.mimc.clone());
 
         // A rejected proof is `false`, not an adapter failure.
         Ok(stark::verify(proof.clone(), &public_inputs).is_ok())
