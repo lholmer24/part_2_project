@@ -56,14 +56,3 @@ system,field,rounds,phase,sample,time_ns,proof_size_bytes
   it is also the proof-instance index and selects the preimage.
 - `time_ns` is the measured time in nanoseconds.
 - `proof_size_bytes` is present on `prove` rows only.
-
-While a sweep runs, the harness prints one block per system and one line per
-round count with the setup, warm-up and prove/verify totals. It also prints a
-line for any single sample that takes a second or more, so a slow configuration
-does not look frozen.
-
-Each CSV row is written and flushed as soon as its sample completes, and the
-metadata sidecar is written before the first measurement. An interrupted sweep
-therefore keeps every completed row, together with a sidecar that describes
-them.
-
