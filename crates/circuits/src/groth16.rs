@@ -1,16 +1,14 @@
-//! The MiMC preimage statement as a Groth16 constraint system.
+//! Groth16 MiMC preimage circuit.
 //!
-//! The circuit has one public input, `h`, and the private witness `x`.
-//! The constraints enforce `h = E(x) + x` over the parameters' rounds.
+//! Each round is `s' = (s + c)^5`, which `pow_by_constant([5])` encodes with
+//! three multiplication constraints. The finish constraint is `s_r + x = h`,
+//! so `r` rounds cost `3r + 1` constraints.
 
 use ark_bls12_381::Fr;
 use ark_r1cs_std::{fields::fp::FpVar, prelude::*};
 use ark_relations::gr1cs::{ConstraintSynthesizer, ConstraintSystemRef, SynthesisError};
 use mimc::Statement;
 
-/// Groth16 circuit for the MiMC preimage statement.
-///
-/// The shared circuit type is aliased with the Groth16 field.
 pub type MimcPreimageCircuit = crate::MimcPreimageCircuit<Fr>;
 
 impl ConstraintSynthesizer<Fr> for MimcPreimageCircuit {

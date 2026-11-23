@@ -1,17 +1,7 @@
-//! Bulletproofs adapter for the benchmark harness.
+//! Bulletproofs adapter.
 //!
-//! The adapter calls the `bulletproofs` R1CS API directly. It holds no timer,
-//! so the harness times proving and verification at one call boundary. The
-//! circuit and the shared prover/verifier gadget are in
-//! `circuits::bulletproofs`.
-//!
-//! Bulletproofs is transparent: the generators are built once in
-//! [`System::prepare_universal`](crate::System::prepare_universal) and there is
-//! no per-configuration setup phase.
-//!
-//! The public hash is committed with zero blinding, so the verifier can rebuild
-//! the commitment from the hash. The preimage uses a fresh random blinding on
-//! every proof.
+//! Transparent, so there is no per-configuration setup; the generators are
+//! built once in `prepare_universal`.
 
 use bulletproofs_lib::r1cs::{Prover, R1CSProof, Verifier};
 use bulletproofs_lib::{BulletproofGens, PedersenGens};
@@ -27,7 +17,6 @@ use rand::thread_rng;
 
 use crate::{benchmark_seed, BoxError, ProofBox, System};
 
-/// Domain-separation label for the proof transcript.
 const DOMAIN: &[u8] = b"mimc-bulletproofs-v1";
 
 struct Prepared {
@@ -36,13 +25,11 @@ struct Prepared {
     preimage: Scalar,
 }
 
-/// A Bulletproofs proof plus the commitments that bind the statement.
 struct BulletproofsProof {
     proof: R1CSProof,
     commitments: MimcCommitments,
 }
 
-/// Harness adapter for Bulletproofs over Ristretto255.
 pub struct BulletproofsSystem {
     pc_gens: Option<PedersenGens>,
     bp_gens: Option<BulletproofGens>,
@@ -50,7 +37,6 @@ pub struct BulletproofsSystem {
 }
 
 impl BulletproofsSystem {
-    /// Create an adapter with no prepared state.
     pub fn new() -> Self {
         Self {
             pc_gens: None,
@@ -76,8 +62,7 @@ impl System for BulletproofsSystem {
     }
 
     fn prepare_universal(&mut self, max_rounds: usize) -> Result<(), BoxError> {
-        // Size the generators from a measured synthesis of the largest circuit,
-        // not from the expected multiplier formula.
+        // Size from a measured synthesis, not the multiplier formula.
         let mimc = MimcParams::<Scalar>::load(max_rounds, 5)
             .map_err(|error| -> BoxError { Box::new(error) })?;
         let size = circuit_size(&mimc).map_err(|error| -> BoxError { Box::new(error) })?;

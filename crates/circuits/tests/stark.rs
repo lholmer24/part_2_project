@@ -1,11 +1,4 @@
 //! STARK acceptance and rejection tests.
-//!
-//! These tests exercise the circuit and the `winterfell` API directly. The
-//! harness adapter is tested through the `System` trait in
-//! `crates/harness/tests`.
-//!
-//! The circuit bodies are not implemented yet, so these tests are scaffolding:
-//! they compile now and pass once the AIR and trace builder are filled in.
 
 use circuits::stark::{
     self, build_trace, proof_options, trace_length, trace_width, MimcAir, MimcPreimageCircuit,
@@ -16,18 +9,15 @@ use winterfell::math::fields::f128::BaseElement;
 use winterfell::math::FieldElement;
 use winterfell::{Air, Proof, Trace, TraceInfo};
 
-/// Preimage used for every test statement.
 const PREIMAGE: u64 = 12345;
 
-/// The parameters and public hash for one round count.
 fn statement(rounds: usize) -> (MimcParams<BaseElement>, BaseElement) {
     let params = MimcParams::<BaseElement>::load(rounds, 5).expect("load MiMC params");
     let hash = mimc::hash(&params, BaseElement::from(PREIMAGE));
     (params, hash)
 }
 
-/// Build one circuit value. `preimage` is `None` only when the witness is
-/// deliberately absent.
+/// `preimage` is `None` only when the witness is deliberately absent.
 fn circuit(
     params: &MimcParams<BaseElement>,
     hash: BaseElement,
@@ -42,7 +32,6 @@ fn circuit(
     }
 }
 
-/// Prove `rounds` and return the hash the verifier expects.
 fn build(rounds: usize) -> (BaseElement, Proof) {
     let (params, hash) = statement(rounds);
     let proof = stark::prove(
@@ -54,7 +43,6 @@ fn build(rounds: usize) -> (BaseElement, Proof) {
     (hash, proof)
 }
 
-/// Verify a proof against the expected hash and round count.
 fn verify(hash: BaseElement, rounds: usize, proof: Proof) -> bool {
     stark::verify(proof, &MimcPublicInputs::new(hash, rounds)).is_ok()
 }

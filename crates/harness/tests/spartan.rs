@@ -16,8 +16,7 @@ fn spartan_round_trip_through_harness() {
 
     assert!(result.failures.is_empty(), "{:?}", result.failures);
 
-    // Spartan has deterministic preprocessing, so each round count writes one
-    // setup row, one prove row and one verify row.
+    // Spartan has deterministic preprocessing: one row per phase.
     assert_eq!(result.records.len(), 2 * 3);
 
     for record in result

@@ -1,8 +1,4 @@
 //! PLONK acceptance and rejection tests.
-//!
-//! These tests exercise the circuit and the `dusk-plonk` API directly. The
-//! harness adapter is tested through the `System` trait in
-//! `crates/harness/tests`.
 
 use circuits::plonk::{circuit_size, gate_count, MimcPreimageCircuit};
 use dusk_bytes::Serializable;
@@ -10,20 +6,17 @@ use dusk_plonk::prelude::*;
 use mimc::{MimcParams, Statement, MAX_ROUNDS};
 use rand_core::OsRng;
 
-/// Preimage used for every test statement.
 const PREIMAGE: u64 = 12345;
 
-/// Domain-separation label for the test circuit.
 const LABEL: &[u8] = b"mimc-plonk-test";
 
-/// The parameters and public hash for one round count.
 fn statement(rounds: usize) -> (MimcParams<BlsScalar>, BlsScalar) {
     let params = MimcParams::<BlsScalar>::load(rounds, 5).expect("load MiMC params");
     let hash = mimc::hash(&params, BlsScalar::from(PREIMAGE));
     (params, hash)
 }
 
-/// Build one circuit value. `preimage` is `None` during setup.
+/// `preimage` is `None` during setup.
 fn circuit(
     params: MimcParams<BlsScalar>,
     hash: BlsScalar,
@@ -38,16 +31,11 @@ fn circuit(
     }
 }
 
-/// Universal parameters large enough for `rounds` MiMC rounds.
 fn universal_parameters(rounds: usize) -> PublicParameters {
     PublicParameters::setup(gate_count(rounds).next_power_of_two(), &mut OsRng)
         .expect("build public parameters")
 }
 
-/// Compile `rounds`, prove the statement, and return everything the verifier
-/// needs.
-///
-/// The tuple is `(verifier, hash, proof, public_inputs)`.
 fn build_with(
     public_parameters: &PublicParameters,
     rounds: usize,
@@ -69,7 +57,6 @@ fn build_with(
     (verifier, hash, proof, public_inputs)
 }
 
-/// Compile and prove `rounds` with fresh universal parameters.
 fn build(rounds: usize) -> (Verifier, BlsScalar, Proof, Vec<BlsScalar>) {
     build_with(&universal_parameters(rounds), rounds)
 }

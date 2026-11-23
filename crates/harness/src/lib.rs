@@ -1,27 +1,7 @@
-//! Generic benchmark harness for the MiMC preimage statement.
+//! Benchmark harness for the MiMC preimage statement.
 //!
-//! Setup, proving and verification are measured as separate phases. The CSV
-//! records one row per timed phase repetition:
-//!
-//! ```text
-//! system,field,rounds,phase,sample,time_ns,proof_size_bytes
-//! ```
-//!
-//! [`System::prepare_universal`] runs once per system before the round sweep.
-//! [`System::prepare`] runs once per configuration. Both are untimed. Use them
-//! for file loading, reference hashing and reusable parameters.
-//!
-//! [`System::setup`], [`System::prove`] and [`System::verify`] are timed by
-//! [`run_systems`], so every system is measured at the same call boundary.
-//! Adapters must not contain timers. Circuit synthesis and witness
-//! construction are measured inside the prover or setup calls.
-//!
-//! A system with no setup phase produces no `setup` rows. Proof size is
-//! recorded on `prove` rows only.
-//!
-//! [`run`] and [`run_systems`] collect every record in memory. [`run_to_csv`]
-//! and [`run_to_csv_systems`] write and flush one CSV row per sample as it
-//! completes, so an interrupted sweep keeps every completed row.
+//! `run_systems` times setup, prove and verify at one call boundary; adapters
+//! must not hold timers. The CSV has one row per timed sample.
 
 pub mod placeholder;
 pub mod systems;
@@ -39,31 +19,20 @@ pub use systems::{
     BulletproofsSystem, Groth16System, Halo2System, PlonkSystem, SpartanSystem, StarkSystem,
 };
 
-/// Boxed error returned by a system adapter.
 pub type BoxError = Box<dyn StdError + Send + Sync>;
 
-/// Setup timings per configuration when the caller does not choose.
 pub const DEFAULT_SETUP_SAMPLES: usize = 10;
 
-/// Proof timings per configuration when the caller does not choose.
 pub const DEFAULT_SAMPLES: usize = 10;
 
-/// Warm-up prove/verify pairs per configuration when the caller does not choose.
 pub const DEFAULT_WARMUP: usize = 1;
 
-/// Directory that holds benchmark CSV files.
 pub const RESULTS_DIR: &str = "results";
 
-/// CSV header. Times are nanoseconds and sizes are bytes.
 pub const CSV_HEADER: &str = "system,field,rounds,phase,sample,time_ns,proof_size_bytes";
 
-/// Domain separation for benchmark preimage seeds.
 pub const BENCHMARK_SEED_DOMAIN: &[u8] = b"mimc-benchmark-v1";
 
-/// Deterministic 32-byte seed for one `(rounds, sample)` instance.
-///
-/// The seed is expanded into a uniform native-field element by
-/// [`mimc::uniform_from_seed`].
 pub fn benchmark_seed(rounds: usize, instance: usize) -> [u8; 32] {
     let mut hasher = blake3::Hasher::new();
     hasher.update(BENCHMARK_SEED_DOMAIN);
@@ -72,19 +41,14 @@ pub fn benchmark_seed(rounds: usize, instance: usize) -> [u8; 32] {
     *hasher.finalize().as_bytes()
 }
 
-/// One measured phase.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Phase {
-    /// Parameter or key generation.
     Setup,
-    /// Proof generation.
     Prove,
-    /// Proof verification.
     Verify,
 }
 
 impl Phase {
-    /// Lowercase name used in the CSV.
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Setup => "setup",
@@ -100,144 +64,85 @@ impl fmt::Display for Phase {
     }
 }
 
-/// One timed phase repetition.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Record {
-    /// Proof system name.
     pub system: String,
-    /// Native scalar field, or `none` for a placeholder.
     pub field: String,
-    /// Number of MiMC rounds.
     pub rounds: usize,
-    /// Measured phase.
     pub phase: Phase,
-    /// Repetition index within this phase.
     pub sample: usize,
-    /// Measured time.
     pub time: Duration,
-    /// Serialised proof size, present on `prove` rows only.
     pub proof_size_bytes: Option<usize>,
 }
 
-/// An opaque proof returned by an adapter.
-///
-/// The harness never inspects the proof. The adapter downcasts it in
-/// [`System::proof_size`] and [`System::verify`].
 pub struct ProofBox(Box<dyn Any>);
 
 impl ProofBox {
-    /// Wrap a concrete proof value.
     pub fn new<T: Any>(proof: T) -> Self {
         Self(Box::new(proof))
     }
 
-    /// Borrow the proof as its concrete type.
     pub fn downcast_ref<T: Any>(&self) -> Option<&T> {
         self.0.downcast_ref::<T>()
     }
 }
 
-/// One configuration that failed during a sweep.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Failure {
-    /// Proof system name.
     pub system: String,
-    /// Number of MiMC rounds.
     pub rounds: usize,
-    /// Error message from the system adapter.
     pub message: String,
 }
 
-/// Result of a benchmark sweep.
 #[derive(Clone, Debug, Default)]
 pub struct SweepResult {
-    /// Timed phase repetitions.
     pub records: Vec<Record>,
-    /// Configurations that returned an error.
     pub failures: Vec<Failure>,
 }
 
-/// A proof system that the harness can benchmark.
-///
-/// The harness owns every timer. Implementations must not measure time.
 pub trait System {
-    /// Short system name used in the CSV.
     fn name(&self) -> &str;
 
-    /// Native scalar field used by this system.
     fn field(&self) -> &str;
 
-    /// Build one-time universal parameters before the sweep.
-    ///
-    /// The harness calls this once per system, before any timer starts.
-    /// `max_rounds` is the largest round count in the sweep. Store the
-    /// parameters in a field that [`System::prepare`] does not reset.
+    /// Untimed, once per system before the sweep.
     fn prepare_universal(&mut self, _max_rounds: usize) -> Result<(), BoxError> {
         Ok(())
     }
 
-    /// Prepare untimed inputs for one configuration.
-    ///
-    /// Load constants and compute the reference hash here. Circuit synthesis,
-    /// witness construction and library calls belong in the timed phases.
+    /// Untimed, once per configuration.
     fn prepare(&mut self, _rounds: usize) -> Result<(), BoxError> {
         Ok(())
     }
 
-    /// Prepare the private preimage for one proof sample.
-    ///
-    /// The harness calls this untimed before each warm-up and timed proof.
-    /// Implementations must update the statement without discarding setup keys
-    /// or universal parameters. The preimage is
-    /// [`mimc::uniform_from_seed`] applied to [`benchmark_seed`].
+    /// Untimed, before every warm-up and timed proof. Must keep setup keys and
+    /// universal parameters intact.
     fn prepare_instance(&mut self, _rounds: usize, _instance: usize) -> Result<(), BoxError> {
         Ok(())
     }
 
-    /// Whether this system has a per-configuration setup phase.
-    ///
-    /// Return `false` for transparent systems that need no reusable
-    /// preprocessing. The harness then emits no setup rows and never calls
-    /// [`System::setup`].
     fn has_setup(&self) -> bool {
         true
     }
 
-    /// Run the per-configuration setup.
-    ///
-    /// The harness times this call. Store the prepared state in the adapter.
     fn setup(&mut self) -> Result<(), BoxError>;
 
-    /// Run the prover.
-    ///
-    /// The harness times this call. Return the proof as an opaque value.
     fn prove(&self) -> Result<ProofBox, BoxError>;
 
-    /// Serialise the proof and return its size in bytes.
-    ///
-    /// The harness calls this after the prove timer stops.
     fn proof_size(&self, proof: &ProofBox) -> Result<usize, BoxError>;
 
-    /// Run the verifier.
-    ///
-    /// The harness times this call.
     fn verify(&self, proof: &ProofBox) -> Result<bool, BoxError>;
 }
 
-/// Sweep configuration.
 #[derive(Clone, Debug)]
 pub struct RunConfig {
-    /// Systems to run. An empty vector means every registered system.
+    /// Empty means every registered system.
     pub systems: Vec<String>,
-    /// Round counts to run. An empty vector means [`sweep_rounds`].
+    /// Empty means [`sweep_rounds`].
     pub rounds: Vec<usize>,
-    /// Timed setup runs per configuration, for systems with setup.
     pub setup_samples: usize,
-    /// Timed prove/verify pairs per configuration.
     pub samples: usize,
-    /// Warm-up prove/verify pairs per configuration.
     pub warmup: usize,
-    /// CSV output path.
     pub output: PathBuf,
 }
 
@@ -254,18 +159,12 @@ impl Default for RunConfig {
     }
 }
 
-/// Error from the harness itself.
 #[derive(Debug)]
 pub enum Error {
-    /// A filesystem operation failed.
     Io(io::Error),
-    /// Metadata could not be encoded as JSON.
     Json(serde_json::Error),
-    /// The configuration is invalid.
     InvalidConfig(String),
-    /// A name in `RunConfig::systems` matches no registered system.
     UnknownSystem(String),
-    /// No system matched the configuration.
     NoSystems,
 }
 
@@ -303,23 +202,18 @@ impl From<serde_json::Error> for Error {
     }
 }
 
-/// The full round-count sweep, `r = 2^k` up to [`mimc::MAX_ROUNDS`].
 pub fn sweep_rounds() -> Vec<usize> {
     (0..=mimc::MAX_ROUNDS.trailing_zeros())
         .map(|k| 1usize << k)
         .collect()
 }
 
-/// Default CSV path, under `results/`.
 pub fn default_output_path() -> PathBuf {
     PathBuf::from(RESULTS_DIR).join("benchmarks.csv")
 }
 
-/// All registered systems.
-///
-/// Every benchmarked proof system is registered here. [`PlaceholderSystem`] is
-/// intentionally not registered. Tests pass it to [`run_systems`] directly so
-/// its rows never reach a real dataset.
+/// Registered systems. `PlaceholderSystem` is deliberately absent so test rows
+/// never reach a real dataset.
 pub fn systems() -> Vec<Box<dyn System>> {
     vec![
         Box::new(Groth16System::new()),
@@ -331,12 +225,10 @@ pub fn systems() -> Vec<Box<dyn System>> {
     ]
 }
 
-/// Run the configured sweep with the registered systems.
 pub fn run(config: &RunConfig) -> Result<SweepResult, Error> {
     run_systems(systems(), config)
 }
 
-/// Format a duration for progress output.
 fn format_duration(duration: Duration) -> String {
     let seconds = duration.as_secs_f64();
     if seconds < 60.0 {
@@ -346,25 +238,18 @@ fn format_duration(duration: Duration) -> String {
     }
 }
 
-/// Summary of a sweep that streams rows to CSV.
 #[derive(Clone, Debug, Default)]
 pub struct SweepSummary {
-    /// Number of CSV rows written.
     pub records: usize,
-    /// Configurations that returned an error.
     pub failures: Vec<Failure>,
 }
 
-/// Record a failed configuration and print it immediately.
-///
-/// The failure also reaches the caller in the sweep result, but a sweep can
-/// run for hours, so it must be visible while it runs.
+/// A sweep can run for hours, so failures must be visible while it runs.
 fn push_failure(result: &mut SweepSummary, failure: Failure) {
     println!("    FAILED: {}", failure.message);
     result.failures.push(failure);
 }
 
-/// Write one record as one CSV row.
 fn write_record<W: Write>(writer: &mut W, record: &Record) -> Result<(), Error> {
     match record.proof_size_bytes {
         Some(size) => writeln!(
@@ -392,10 +277,8 @@ fn write_record<W: Write>(writer: &mut W, record: &Record) -> Result<(), Error> 
     Ok(())
 }
 
-/// Selected systems and round counts from a validated configuration.
 type Selection = (Vec<Box<dyn System>>, Vec<usize>);
 
-/// Validate the configuration and select the systems to run.
 fn select_systems(
     mut registry: Vec<Box<dyn System>>,
     config: &RunConfig,
@@ -445,9 +328,6 @@ fn select_systems(
     Ok((registry, rounds))
 }
 
-/// Run the configured sweep with an explicit system list.
-///
-/// This is the testable entry point. [`run`] calls it with [`systems`].
 pub fn run_systems(
     registry: Vec<Box<dyn System>>,
     config: &RunConfig,
@@ -464,19 +344,12 @@ pub fn run_systems(
     })
 }
 
-/// Run the configured sweep with the registered systems and write CSV rows as
-/// each sample completes.
 pub fn run_to_csv(config: &RunConfig) -> Result<SweepSummary, Error> {
     run_to_csv_systems(systems(), config)
 }
 
-/// Run the configured sweep with an explicit system list and write CSV rows as
-/// each sample completes.
-///
-/// The header is written before the first measurement and every row is
-/// flushed, so an interrupted sweep keeps every completed row. Call
-/// [`write_run_metadata`] before this function so that a partial CSV has a
-/// sidecar.
+/// Write the header first and flush every row, so an interrupted sweep keeps
+/// every completed row.
 pub fn run_to_csv_systems(
     registry: Vec<Box<dyn System>>,
     config: &RunConfig,
@@ -500,7 +373,6 @@ pub fn run_to_csv_systems(
     })
 }
 
-/// Measure every selected configuration and send each row to `sink`.
 fn run_selected(
     registry: Vec<Box<dyn System>>,
     rounds: Vec<usize>,
@@ -831,10 +703,6 @@ fn run_selected(
     Ok(result)
 }
 
-/// Write phase measurements as CSV.
-///
-/// The first line is [`CSV_HEADER`]. Each record becomes one row. Times are
-/// written as integer nanoseconds. Proof size is written only on `prove` rows.
 pub fn write_csv<W: Write>(mut writer: W, result: &SweepResult) -> Result<(), Error> {
     writeln!(writer, "{CSV_HEADER}")?;
     for record in &result.records {
@@ -843,7 +711,6 @@ pub fn write_csv<W: Write>(mut writer: W, result: &SweepResult) -> Result<(), Er
     Ok(())
 }
 
-/// Create `path` and write the phase measurements as CSV.
 pub fn write_csv_file(path: &Path, result: &SweepResult) -> Result<(), Error> {
     if let Some(parent) = path.parent() {
         if !parent.as_os_str().is_empty() {
@@ -854,19 +721,12 @@ pub fn write_csv_file(path: &Path, result: &SweepResult) -> Result<(), Error> {
     write_csv(BufWriter::new(file), result)
 }
 
-/// Sidecar metadata path for a CSV path.
-///
-/// `results/benchmarks.csv` becomes `results/benchmarks.meta.json`.
 pub fn metadata_path(csv_path: &Path) -> PathBuf {
     let mut path = csv_path.to_path_buf();
     path.set_extension("meta.json");
     path
 }
 
-/// Write run metadata next to the CSV.
-///
-/// The CSV holds only measurements. This sidecar records the environment and
-/// sample settings that the analysis needs for reproducibility.
 pub fn write_run_metadata(path: &Path, config: &RunConfig) -> Result<(), Error> {
     if let Some(parent) = path.parent() {
         if !parent.as_os_str().is_empty() {
@@ -879,8 +739,7 @@ pub fn write_run_metadata(path: &Path, config: &RunConfig) -> Result<(), Error> 
     } else {
         config.rounds.clone()
     };
-    // An empty selector means every registered system, so record the resolved
-    // names rather than an empty list.
+    // An empty selector means every registered system, so resolve the names.
     let system_names = if config.systems.is_empty() {
         systems()
             .iter()

@@ -1,23 +1,16 @@
-//! The MiMC preimage statement as a winterfell AIR and trace.
+//! Winterfell AIR and trace for the MiMC preimage statement.
 //!
-//! The circuit has one public hash, `h`, and the private witness `x`. It
-//! enforces `h = E(x) + x` over the parameters' rounds.
+//! The trace has three columns: the state, a carried copy of `x` and the hash
+//! candidate. Row 0 is `x`, row `i` is `s_i`, and row `r - 1` holds `s_{r-1}`
+//! and the hash. The transition on row `r - 2` performs the final round and
+//! checks
 //!
-//! # Layout
+//! ```text
+//! h = (s_{r-1} + c_{r-1})^5 + x
+//! ```
 //!
-//! The main trace has three columns: the MiMC state, the carried preimage and
-//! the final hash candidate. Rows `0 .. rounds - 1` hold the pre-round states.
-//! The trace length is `max(rounds, 8)`, so short traces are padded to the
-//! winterfell minimum without adding an output row.
-//!
-//! Five periodic columns supply the round constants and the selectors for the
-//! first row, the normal rounds and the final hash check. The hash is bound by
-//! a transition constraint on the row before the last real state, and a
-//! boundary assertion pins that hash to the public input.
-//!
-//! [`MimcPublicInputs`] carries the round count next to the hash, so the
-//! verifier can recover `r` and load the shared round constants without reading
-//! trace metadata.
+//! and a boundary assertion pins `h` at row `r - 1`. Short traces pad to eight
+//! rows, so the hash check never lands on the exempt final transition.
 
 use mimc::MimcParams;
 use winterfell::{
@@ -31,23 +24,15 @@ use winterfell::{
     TransitionConstraintDegree, VerifierError,
 };
 
-/// Minimum conjectured security that the verifier accepts, in bits.
 pub const MIN_CONJECTURED_SECURITY_BITS: u32 = 100;
 
-/// Public inputs for the MiMC preimage statement.
-///
-/// The hash is the statement output. The round count is a public parameter and
-/// lets the AIR reconstruct the round constants during verification.
 #[derive(Clone, Debug)]
 pub struct MimcPublicInputs {
-    /// Public hash, h.
     pub hash: BaseElement,
-    /// Number of MiMC rounds, r.
     pub rounds: usize,
 }
 
 impl MimcPublicInputs {
-    /// Build the public inputs for one statement.
     pub fn new(hash: BaseElement, rounds: usize) -> Self {
         Self { hash, rounds }
     }
@@ -59,27 +44,16 @@ impl ToElements<BaseElement> for MimcPublicInputs {
     }
 }
 
-/// Column holding the MiMC state.
 pub const STATE_COLUMN: usize = 0;
 
-/// Column holding the carried preimage `x`.
 pub const PREIMAGE_COLUMN: usize = 1;
 
-/// Column holding the final hash candidate `h`.
 pub const HASH_COLUMN: usize = 2;
 
-/// Number of columns in the execution trace.
-///
-/// The trace has the state, the carried preimage and the hash candidate.
-/// The AIR and [`build_trace`] must both use this width.
 pub fn trace_width() -> usize {
     3
 }
 
-/// Number of rows in the execution trace for `rounds` MiMC rounds.
-///
-/// Rows `0 .. rounds - 1` hold the pre-round states. Short traces are padded
-/// to the winterfell minimum of eight rows, so no extra output row is needed.
 pub fn trace_length(rounds: usize) -> usize {
     debug_assert!(
         rounds.is_power_of_two(),
@@ -88,7 +62,6 @@ pub fn trace_length(rounds: usize) -> usize {
     rounds.max(8)
 }
 
-/// AIR for the MiMC preimage statement.
 pub struct MimcAir {
     context: AirContext<BaseElement>,
     public_inputs: MimcPublicInputs,
@@ -96,12 +69,10 @@ pub struct MimcAir {
 }
 
 impl MimcAir {
-    /// The public inputs this AIR instance was built with.
     pub fn public_inputs(&self) -> &MimcPublicInputs {
         &self.public_inputs
     }
 
-    /// The MiMC parameters loaded for this AIR instance.
     pub fn params(&self) -> &MimcParams<BaseElement> {
         &self.params
     }
@@ -222,16 +193,8 @@ impl Air for MimcAir {
     }
 }
 
-/// STARK circuit for the MiMC preimage statement.
-///
-/// The shared circuit type is aliased with the winterfell field.
 pub type MimcPreimageCircuit = crate::MimcPreimageCircuit<BaseElement>;
 
-/// Build the execution trace for one MiMC statement.
-///
-/// The adapter calls this inside the timed `prove` call. The trace records the
-/// pre-round states, carries the preimage and writes the public hash candidate
-/// at the last real row.
 pub fn build_trace(circuit: &MimcPreimageCircuit) -> TraceTable<BaseElement> {
     let width = trace_width();
     let rounds = circuit.statement.params.rounds;
@@ -268,22 +231,11 @@ pub fn build_trace(circuit: &MimcPreimageCircuit) -> TraceTable<BaseElement> {
     trace
 }
 
-/// Grinding factor for the STARK benchmarks.
-///
-/// The project fixes this at 0. Grinding adds proof-of-work to the prover and
-/// a variable nonce search to every sample. Winterfell adds the grinding bits
-/// to the conjectured security only up to the `f128` modulus, and 42 queries
-/// already reach that ceiling within 2 bits. Grinding 16 therefore cost a
-/// search of about 2^16 hashes per proof and added no estimated security.
+/// Grinding is 0: 42 queries already reach 125 bits, and the 128-bit `f128`
+/// modulus clamps the estimate at 127 bits.
 pub const GRINDING_FACTOR: u32 = 0;
 
-/// Proof options for every STARK benchmark.
-///
-/// The parameters are 42 queries, blowup factor 8, [`GRINDING_FACTOR`], no
-/// field extension and Blake3-256. Winterfell computes the conjectured
-/// security as `min(min(128, 3 * 42 + 0) - 1, 128) = 125` bits, which is above
-/// the verifier's 100-bit floor. Grinding cannot raise this estimate, because
-/// the 128-bit `f128` modulus clamps it at 127 bits.
+/// 42 queries, blowup 8, no field extension: 125 conjectured bits.
 pub fn proof_options() -> ProofOptions {
     ProofOptions::new(
         42,
@@ -297,17 +249,12 @@ pub fn proof_options() -> ProofOptions {
     )
 }
 
-/// Winterfell prover for [`MimcAir`].
-///
-/// The prover carries the public inputs so that they do not have to be read
-/// back from the trace layout.
 pub struct MimcProver {
     options: ProofOptions,
     public_inputs: MimcPublicInputs,
 }
 
 impl MimcProver {
-    /// Build a prover with fixed options and public inputs.
     pub fn new(options: ProofOptions, public_inputs: MimcPublicInputs) -> Self {
         Self {
             options,
@@ -373,10 +320,6 @@ impl Prover for MimcProver {
     }
 }
 
-/// Prove one MiMC statement.
-///
-/// Trace generation and proof generation both happen here, so the harness
-/// times them inside its `prove` phase.
 pub fn prove(circuit: &MimcPreimageCircuit, options: ProofOptions) -> Result<Proof, ProverError> {
     let public_inputs =
         MimcPublicInputs::new(circuit.statement.hash, circuit.statement.params.rounds);
@@ -384,7 +327,6 @@ pub fn prove(circuit: &MimcPreimageCircuit, options: ProofOptions) -> Result<Pro
     MimcProver::new(options, public_inputs).prove(trace)
 }
 
-/// Verify one MiMC proof against the public inputs.
 pub fn verify(proof: Proof, public_inputs: &MimcPublicInputs) -> Result<(), VerifierError> {
     winterfell::verify::<
         MimcAir,

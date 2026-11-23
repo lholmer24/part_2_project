@@ -1,11 +1,4 @@
 //! Bulletproofs acceptance and rejection tests.
-//!
-//! These tests exercise the circuit and the `bulletproofs` R1CS API directly.
-//! The harness adapter is tested through the `System` trait in
-//! `crates/harness/tests`.
-//!
-//! The full 16-count proof sweep is gated behind the `extended-tests` feature
-//! because the largest circuit dominates the runtime.
 
 use bulletproofs_lib::r1cs::{ConstraintSystem, Prover, R1CSProof, Verifier};
 use bulletproofs_lib::{BulletproofGens, PedersenGens};
@@ -17,26 +10,20 @@ use curve25519_dalek_v3::scalar::Scalar;
 use merlin::Transcript;
 use mimc::{MimcParams, Statement, MAX_ROUNDS};
 
-/// Preimage used for every test statement.
 const PREIMAGE: u64 = 12345;
 
-/// Fixed commitment blinding so the tests do not depend on an RNG.
-///
-/// A real prover uses a fresh random blinding for every proof.
+/// Fixed blinding so the tests do not depend on an RNG.
 const PREIMAGE_BLINDING: u64 = 0xB11D;
 
-/// Domain-separation label for the test transcript.
 const DOMAIN: &[u8] = b"mimc-bulletproofs-test";
 
-/// The parameters and public hash for one round count.
 fn statement(rounds: usize) -> (MimcParams<Scalar>, Scalar) {
     let params = MimcParams::<Scalar>::load(rounds, 5).expect("load MiMC params");
     let hash = mimc::hash(&params, Scalar::from(PREIMAGE));
     (params, hash)
 }
 
-/// Build one circuit value. `preimage` is `None` only when the witness is
-/// deliberately absent.
+/// `preimage` is `None` only when the witness is deliberately absent.
 fn circuit(
     params: &MimcParams<Scalar>,
     hash: Scalar,
@@ -51,7 +38,6 @@ fn circuit(
     }
 }
 
-/// Generators sized from a measured synthesis of the circuit for `params`.
 fn generators(params: &MimcParams<Scalar>) -> (PedersenGens, BulletproofGens) {
     let size = circuit_size(params).expect("measure circuit size");
     (
@@ -60,19 +46,16 @@ fn generators(params: &MimcParams<Scalar>) -> (PedersenGens, BulletproofGens) {
     )
 }
 
-/// Open a prover transcript bound to the round count.
 fn prover_transcript(rounds: usize) -> Transcript {
     let mut transcript = Transcript::new(DOMAIN);
     transcript.append_u64(b"rounds", rounds as u64);
     transcript
 }
 
-/// Open a verifier transcript bound to the round count.
 fn verifier_transcript(rounds: usize) -> Transcript {
     prover_transcript(rounds)
 }
 
-/// A proof and the statement data the verifier needs.
 struct Proof {
     params: MimcParams<Scalar>,
     hash: Scalar,
@@ -80,7 +63,6 @@ struct Proof {
     commitments: MimcCommitments,
 }
 
-/// Prove the statement with caller-supplied generators.
 fn build_with(
     pc_gens: &PedersenGens,
     bp_gens: &BulletproofGens,
@@ -107,7 +89,6 @@ fn build_with(
     }
 }
 
-/// Prove the statement for `rounds` with generators sized from the circuit.
 fn build(rounds: usize) -> (PedersenGens, BulletproofGens, Proof) {
     let (params, hash) = statement(rounds);
     let (pc_gens, bp_gens) = generators(&params);
@@ -115,7 +96,6 @@ fn build(rounds: usize) -> (PedersenGens, BulletproofGens, Proof) {
     (pc_gens, bp_gens, proof)
 }
 
-/// Verify `proof` against `hash`.
 fn verify_with_hash(
     pc_gens: &PedersenGens,
     bp_gens: &BulletproofGens,

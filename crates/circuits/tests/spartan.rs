@@ -1,11 +1,4 @@
 //! Spartan acceptance and rejection tests.
-//!
-//! These tests exercise the circuit and the `spartan` SNARK API directly. The
-//! harness adapter is tested through the `System` trait in
-//! `crates/harness/tests`.
-//!
-//! The full 16-count proof sweep is gated behind the `extended-tests` feature
-//! because the largest instance dominates the runtime.
 
 use circuits::spartan::{build_assignments, build_inputs, build_shape, MimcPreimageCircuit};
 use curve25519_dalek_v4::scalar::Scalar;
@@ -13,36 +6,26 @@ use merlin_v3::Transcript;
 use mimc::{MimcParams, Statement, MAX_ROUNDS};
 use spartan_lib::{ComputationCommitment, SNARKGens, SNARK};
 
-/// Preimage used for every test statement.
 const PREIMAGE: u64 = 12345;
 
-/// Domain-separation label for the test transcript.
 const DOMAIN: &[u8] = b"mimc-spartan-test";
 
-/// Independent expected constraint count for `rounds` MiMC rounds.
-///
-/// Hand-written counts belong in the tests, not in the circuit module. Three
-/// multiplication constraints per round plus the final equality.
+/// Hand-written oracle, kept in the test rather than the circuit module.
 fn expected_constraint_count(rounds: usize) -> usize {
     3 * rounds + 1
 }
 
-/// Independent expected witness-variable count for `rounds` MiMC rounds.
-///
-/// The preimage plus three variables per round.
 fn expected_variable_count(rounds: usize) -> usize {
     1 + 3 * rounds
 }
 
-/// The parameters and public hash for one round count.
 fn statement(rounds: usize) -> (MimcParams<Scalar>, Scalar) {
     let params = MimcParams::<Scalar>::load(rounds, 5).expect("load MiMC params");
     let hash = mimc::hash(&params, Scalar::from(PREIMAGE));
     (params, hash)
 }
 
-/// Build one circuit value. `preimage` is `None` only when the witness is
-/// deliberately absent.
+/// `preimage` is `None` only when the witness is deliberately absent.
 fn circuit(
     params: &MimcParams<Scalar>,
     hash: Scalar,
@@ -57,7 +40,6 @@ fn circuit(
     }
 }
 
-/// Generators sized from a measured synthesis of the circuit for `params`.
 fn generators(params: &MimcParams<Scalar>) -> SNARKGens {
     let shape = build_shape(params).expect("measure circuit shape");
     SNARKGens::new(
@@ -68,19 +50,16 @@ fn generators(params: &MimcParams<Scalar>) -> SNARKGens {
     )
 }
 
-/// Open a prover transcript bound to the round count.
 fn prover_transcript(rounds: usize) -> Transcript {
     let mut transcript = Transcript::new(DOMAIN);
     transcript.append_u64(b"rounds", rounds as u64);
     transcript
 }
 
-/// Open a verifier transcript bound to the round count.
 fn verifier_transcript(rounds: usize) -> Transcript {
     prover_transcript(rounds)
 }
 
-/// A proof and the statement data the verifier needs.
 struct Proof {
     params: MimcParams<Scalar>,
     hash: Scalar,
@@ -88,7 +67,6 @@ struct Proof {
     proof: SNARK,
 }
 
-/// Prove the statement with caller-supplied generators.
 fn build_with(gens: &SNARKGens, params: MimcParams<Scalar>, hash: Scalar) -> Proof {
     let rounds = params.rounds;
 
@@ -117,7 +95,6 @@ fn build_with(gens: &SNARKGens, params: MimcParams<Scalar>, hash: Scalar) -> Pro
     }
 }
 
-/// Prove the statement for `rounds` with generators sized from the circuit.
 fn build(rounds: usize) -> (SNARKGens, Proof) {
     let (params, hash) = statement(rounds);
     let gens = generators(&params);
@@ -125,7 +102,6 @@ fn build(rounds: usize) -> (SNARKGens, Proof) {
     (gens, proof)
 }
 
-/// Verify `proof` against `hash`.
 fn verify_with_hash(gens: &SNARKGens, proof: &Proof, hash: Scalar) -> bool {
     let inputs = build_inputs(hash).expect("build public inputs");
     let mut transcript = verifier_transcript(proof.params.rounds);

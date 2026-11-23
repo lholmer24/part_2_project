@@ -16,8 +16,7 @@ fn halo2_round_trip_through_harness() {
 
     assert!(result.failures.is_empty(), "{:?}", result.failures);
 
-    // Halo2 has key generation, so each round count writes one setup row, one
-    // prove row and one verify row.
+    // One setup, one prove and one verify row per round count.
     assert_eq!(result.records.len(), 2 * 3);
 
     let sizes: Vec<usize> = result
@@ -27,8 +26,7 @@ fn halo2_round_trip_through_harness() {
         .map(|record| record.proof_size_bytes.expect("proof size missing"))
         .collect();
 
-    // Round counts 1 and 4 use different domains, so the per-domain parameter
-    // selection must produce different IPA proof sizes.
+    // The two round counts use different domains, so proof sizes must differ.
     assert_eq!(sizes.len(), 2);
     assert_ne!(
         sizes[0], sizes[1],

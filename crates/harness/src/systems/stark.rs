@@ -1,12 +1,4 @@
-//! STARK adapter for the benchmark harness.
-//!
-//! The adapter calls `winterfell` directly. It holds no timer, so the harness
-//! times proving and verification at one call boundary.
-//!
-//! STARK is transparent: there is no per-configuration setup phase and no
-//! universal parameters. [`System::prepare`](crate::System::prepare) loads the
-//! round constants, computes the reference hash and builds the proof options.
-//! The AIR and trace builder are in `circuits::stark`.
+//! STARK adapter. Transparent: no setup and no universal parameters.
 
 use circuits::stark::{self, MimcPreimageCircuit, MimcPublicInputs};
 use mimc::field_names::WINTERFELL_F128;
@@ -23,14 +15,12 @@ struct Prepared {
     options: ProofOptions,
 }
 
-/// Harness adapter for STARK over winterfell `f128`.
 #[derive(Default)]
 pub struct StarkSystem {
     prepared: Option<Prepared>,
 }
 
 impl StarkSystem {
-    /// Create an adapter with no prepared state.
     pub fn new() -> Self {
         Self::default()
     }
@@ -115,7 +105,7 @@ impl System for StarkSystem {
             .ok_or("stark proof type mismatch")?;
         let public_inputs = MimcPublicInputs::new(prepared.hash, prepared.mimc.rounds);
 
-        // A rejected proof is a `false` result, not an adapter failure.
+        // A rejected proof is `false`, not an adapter failure.
         Ok(stark::verify(proof.clone(), &public_inputs).is_ok())
     }
 }

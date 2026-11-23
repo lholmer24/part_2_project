@@ -1,7 +1,5 @@
-//! MiMC reference tests.
-//!
-//! The hash tests run by default. The full round-count sweep and the
-//! Rust/Python agreement check need `--features extended-tests`.
+//! MiMC reference tests. The full sweep and the Rust/Python agreement check
+//! need `--features extended-tests`.
 
 use std::fmt::Write as _;
 use std::io::Write as _;
@@ -10,7 +8,7 @@ use std::process::{Command, Stdio};
 
 use mimc::{hash, load_round_constants, MimcField, MimcParams, MAX_ROUNDS};
 
-/// One SplitMix64 step, used to make the agreement inputs reproducible.
+/// SplitMix64 step, so the agreement inputs are reproducible.
 fn splitmix64(state: &mut u64) -> u64 {
     *state = state.wrapping_add(0x9E37_79B9_7F4A_7C15);
     let mut z = *state;
@@ -26,10 +24,7 @@ macro_rules! field_tests {
 
             type F = $field;
 
-            /// Known answers, computed by hand as `c_0^5` and `((x + c_0)^5 + c_1)^5 + x`.
-            ///
-            /// The `r = 1, x = 0` case needs only one exponentiation of the first
-            /// committed constant, so it is checkable without this crate.
+            /// Hand-computable: `c_0^5` and `((x + c_0)^5 + c_1)^5 + x`.
             #[test]
             fn matches_known_answers() {
                 let params = MimcParams::<F>::load(1, 5).expect("load params");

@@ -1,21 +1,8 @@
-//! Spartan adapter for the benchmark harness.
+//! Spartan adapter.
 //!
-//! The adapter calls the `spartan` SNARK API directly. It holds no timer, so
-//! the harness times setup, proving and verification at one call boundary. The
-//! R1CS builder is in `circuits::spartan`.
-//!
-//! Spartan is transparent. Its generators are tied to one instance shape:
-//! `MultiCommitGens::commit` asserts `gens_n.n == scalars.len()`, so a
-//! max-size generator set cannot serve a smaller instance. The adapter caches
-//! one `SNARKGens` per measured round count. Building a set is untimed, like
-//! universal parameter generation for the other systems.
-//!
-//! The timed setup is the deterministic preprocessing: the adapter builds the
-//! R1CS matrices and calls `SNARK::encode`. Proving builds the witness
-//! assignment and calls `SNARK::prove`.
-//!
-//! `SNARKGens::new` pads `num_vars` itself but not `num_cons`. The adapter
-//! therefore passes `R1CSShape::padded_num_cons`.
+//! Generators are tied to one instance shape, so one `SNARKGens` is cached per
+//! round count. `SNARKGens::new` pads `num_vars` but not `num_cons`, so it gets
+//! `padded_num_cons`.
 
 use std::collections::btree_map::Entry;
 use std::collections::BTreeMap;
@@ -29,7 +16,6 @@ use spartan_lib::{ComputationCommitment, ComputationDecommitment, Instance, SNAR
 
 use crate::{benchmark_seed, BoxError, ProofBox, System};
 
-/// Domain-separation label for the proof transcript.
 const DOMAIN: &[u8] = b"mimc-spartan-v1";
 
 /// Build one `SNARKGens` set from a measured circuit shape.
@@ -49,19 +35,16 @@ struct Prepared {
     preimage: Scalar,
 }
 
-/// The encoded computation and the matrices it commits to.
 struct SpartanSetup {
     instance: Instance,
     commitment: ComputationCommitment,
     decommitment: ComputationDecommitment,
 }
 
-/// A Spartan proof.
 struct SpartanProof {
     proof: SNARK,
 }
 
-/// Harness adapter for Spartan over Ristretto255.
 #[derive(Default)]
 pub struct SpartanSystem {
     /// One generator set per round count, because Spartan fixes it per shape.
@@ -71,7 +54,6 @@ pub struct SpartanSystem {
 }
 
 impl SpartanSystem {
-    /// Create an adapter with no prepared state.
     pub fn new() -> Self {
         Self::default()
     }
@@ -87,8 +69,7 @@ impl System for SpartanSystem {
     }
 
     fn prepare_universal(&mut self, max_rounds: usize) -> Result<(), BoxError> {
-        // Build the largest set now. `prepare` adds any smaller set that the
-        // sweep needs.
+        // Build the largest set now; `prepare` adds smaller ones on demand.
         let mimc = MimcParams::<Scalar>::load(max_rounds, 5)
             .map_err(|error| -> BoxError { Box::new(error) })?;
         self.gens.insert(max_rounds, generators(&mimc)?);

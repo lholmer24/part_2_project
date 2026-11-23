@@ -1,108 +1,52 @@
-//! The MiMC preimage statement as a Spartan R1CS.
+//! Spartan MiMC preimage circuit.
 //!
-//! Spartan 0.9 takes the three sparse R1CS matrices as `(row, column, value)`
-//! triples. The value is a canonical little-endian Ristretto255 scalar encoded
-//! as 32 bytes. The Spartan field type is not public, so this module uses the
-//! shared [`curve25519_dalek_v4::scalar::Scalar`] adapter and converts each
-//! coefficient with [`scalar_bytes`].
-//!
-//! # Constraint layout
-//!
-//! One MiMC round is `s -> (s + c)^5` with exponent 5. The addition chain
-//! `2, 4, 5` costs three multiplication constraints:
+//! Spartan takes the three sparse R1CS matrices as `(row, column, value)`
+//! triples, with each value a canonical little-endian Ristretto255 scalar. One
+//! round `s -> (s + c)^5` uses the 2-4-5 chain:
 //!
 //! ```text
-//! A_1 * B_1 = C_1    (s + c) * (s + c) = t2
-//! A_2 * B_2 = C_2    t2 * t2           = t4
-//! A_3 * B_3 = C_3    t4 * (s + c)      = s'
+//! (s + c) * (s + c) = t2
+//! t2 * t2           = t4
+//! t4 * (s + c)      = s'
 //! ```
 //!
-//! The final equality binds the public hash:
+//! and the finish constraint is `(s_r + x) * 1 = h`. Each round contributes
+//! three constraints and three witness variables; the finish adds one
+//! constraint and one public input.
 //!
-//! ```text
-//! A_4 * B_4 = C_4    (s_r + x) * 1 = h
-//! ```
+//! Witness columns are `x`, then `t2, t4, s'` per round, followed by a
+//! constant-one column and the public input.
 //!
-//! Each round contributes three constraints and three witness variables. The
-//! final equality contributes one more constraint and one public input.
-//!
-//! # Column layout
-//!
-//! [`Instance::new`] takes the witness columns first, then one constant-one
-//! column, then the public-input columns. In witness order, column 0 holds the
-//! preimage `x`. Each round then appends `t2`, `t4` and its output `s'`. The
-//! constant column follows the last witness column, and the public hash follows
-//! the constant.
-//!
-//! The witness order is the preimage `x`, then `t2`, `t4` and `s'` for each
-//! round in order. The helpers [`constant_column`] and [`input_column`] give
-//! the constant and input columns.
-//!
-//! # Generator sizing
-//!
-//! [`spartan_lib::SNARKGens::new`] pads `num_vars` but not `num_cons`. It
-//! calls `num_cons.log_2()` in `R1CSCommitmentGens`, while [`Instance::new`]
-//! pads `num_cons` to a power of two. Callers must therefore pass
-//! [`R1CSShape::padded_num_cons`], not [`R1CSShape::num_cons`], to
-//! `SNARKGens::new`.
-//!
-//! The builder records its own sizes in [`R1CSShape`]. Do not size anything
-//! from a hand-written count; expected counts belong in the tests.
+//! `SNARKGens::new` pads `num_vars` but not `num_cons`: it calls
+//! `num_cons.log_2()`, while `Instance::new` pads `num_cons` to a power of two.
+//! Callers must pass [`R1CSShape::padded_num_cons`].
 
 use curve25519_dalek_v4::scalar::Scalar;
 use mimc::{MimcParams, Statement};
 use spartan_lib::{InputsAssignment, Instance, VarsAssignment};
 
-/// Spartan R1CS circuit for the MiMC preimage statement.
-///
-/// The shared circuit type is aliased with the Spartan field.
 pub type MimcPreimageCircuit = crate::MimcPreimageCircuit<Scalar>;
 
-/// One coefficient in one of the three R1CS matrices.
-///
-/// `row` and `column` index the matrix. `value` is the canonical
-/// little-endian encoding of the coefficient.
 pub type MatrixEntry = (usize, usize, [u8; 32]);
 
-/// The three sparse R1CS matrices for one MiMC statement.
-///
-/// `num_cons`, `num_vars` and `num_inputs` are the unpadded sizes. Spartan
-/// pads them inside [`Instance::new`].
 pub struct R1CSShape {
-    /// Number of constraints before padding.
     pub num_cons: usize,
-    /// Number of witness variables before padding.
     pub num_vars: usize,
-    /// Number of public inputs.
     pub num_inputs: usize,
-    /// Matrix `A`.
     pub a: Vec<MatrixEntry>,
-    /// Matrix `B`.
     pub b: Vec<MatrixEntry>,
-    /// Matrix `C`.
     pub c: Vec<MatrixEntry>,
 }
 
 impl R1CSShape {
-    /// Number of constraints after Spartan's power-of-two padding.
-    ///
-    /// `Instance::new` keeps at least two constraints. `SNARKGens::new` does
-    /// not pad `num_cons`, so this value must be passed to it.
     pub fn padded_num_cons(&self) -> usize {
         self.num_cons.next_power_of_two().max(2)
     }
 
-    /// Largest number of non-zero entries in any of the three matrices.
-    ///
-    /// This is the `num_nz_entries` argument of `SNARKGens::new`.
     pub fn max_nonzeros(&self) -> usize {
         self.a.len().max(self.b.len()).max(self.c.len())
     }
 
-    /// Build the Spartan instance from the three matrices.
-    ///
-    /// `Instance::new` pads `num_cons` and `num_vars` itself, so the shape's
-    /// unpadded sizes are passed through.
     pub fn instance(&self) -> Result<Instance, Error> {
         Instance::new(
             self.num_cons,
@@ -116,35 +60,22 @@ impl R1CSShape {
     }
 }
 
-/// Witness and public-input assignments for one MiMC statement.
 pub struct Assignments {
-    /// Assignment of the witness variables.
     pub vars: VarsAssignment,
-    /// Assignment of the public inputs.
     pub inputs: InputsAssignment,
 }
 
-/// R1CS instance and assignments for one MiMC statement.
 pub struct MimcInstance {
-    /// Sparse R1CS instance.
     pub instance: Instance,
-    /// Witness assignment.
     pub vars: VarsAssignment,
-    /// Public input assignment.
     pub inputs: InputsAssignment,
 }
 
-/// Errors from the Spartan R1CS builder.
 #[derive(Debug)]
 pub enum Error {
-    /// The R1CS instance or an assignment could not be built.
-    ///
-    /// Spartan does not export its error type, so this variant carries no
-    /// detail.
+    /// Spartan does not export its error type, so this carries no detail.
     R1CS,
-    /// The statement has no private preimage.
     MissingWitness,
-    /// The round function only supports exponent 5.
     UnsupportedExponent(u64),
 }
 
@@ -162,25 +93,19 @@ impl std::fmt::Display for Error {
 
 impl std::error::Error for Error {}
 
-/// Canonical little-endian bytes of one coefficient.
 pub fn scalar_bytes(value: Scalar) -> [u8; 32] {
     value.to_bytes()
 }
 
-/// Column of the constant one.
 pub fn constant_column(num_vars: usize) -> usize {
     num_vars
 }
 
-/// Column of public input `input`.
 pub fn input_column(num_vars: usize, input: usize) -> usize {
     num_vars + 1 + input
 }
 
-/// Build the three sparse R1CS matrices for one MiMC statement.
-///
-/// The matrices depend on the round count and the round constants, not on the
-/// preimage or the public hash.
+/// The matrices depend on the round count and constants, not on the statement.
 pub fn build_shape(params: &MimcParams<Scalar>) -> Result<R1CSShape, Error> {
     if params.exponent != 5 {
         return Err(Error::UnsupportedExponent(params.exponent));
@@ -264,9 +189,7 @@ pub fn build_shape(params: &MimcParams<Scalar>) -> Result<R1CSShape, Error> {
     })
 }
 
-/// Build the witness and public-input assignments for one MiMC statement.
-///
-/// The witness order must match the columns used by [`build_shape`].
+/// Witness order must match the columns in [`build_shape`].
 pub fn build_assignments(
     params: &MimcParams<Scalar>,
     hash: Scalar,
@@ -299,18 +222,11 @@ pub fn build_assignments(
     })
 }
 
-/// Build the public-input assignment for one public hash.
-///
-/// The verifier needs no witness.
 pub fn build_inputs(hash: Scalar) -> Result<InputsAssignment, Error> {
     InputsAssignment::new(&[scalar_bytes(hash)]).map_err(|_| Error::R1CS)
 }
 
-/// Build the R1CS instance and assignments for one MiMC statement.
-///
-/// This combines [`build_shape`] and [`build_assignments`]. It is used by the
-/// acceptance tests. The adapter builds the shape in setup and the
-/// assignments in prove, to keep the timing boundaries separate.
+/// Convenience wrapper used by the acceptance tests.
 pub fn build_instance(circuit: &MimcPreimageCircuit) -> Result<MimcInstance, Error> {
     let Statement {
         params,

@@ -1,18 +1,7 @@
-//! Halo2 adapter for the benchmark harness.
+//! Halo2 adapter.
 //!
-//! The adapter calls `halo2_proofs` directly. It holds no timer, so the harness
-//! times setup, proving and verification at one call boundary.
-//!
-//! One IPA `Params` is built for every measured domain exponent `k` in
-//! [`System::prepare_universal`](crate::System::prepare_universal) and cached;
-//! [`System::prepare`](crate::System::prepare) selects the `k` measured for the
-//! current round count. Universal-parameter generation therefore stays outside
-//! every timer, while the timed setup, prove and verify scale with the domain
-//! that the circuit actually needs. This matches PLONK's per-circuit SRS trim.
-//!
-//! Halo2's IPA parameters cannot be trimmed: `Params::new(k)` derives the
-//! generator and Lagrange bases for that exact `k`. One `Params` per `k` is the
-//! equivalent of the PLONK trim. See `docs/timing-plan.md`.
+//! IPA parameters cannot be trimmed, so one `Params` is cached per measured
+//! domain exponent `k`; `prepare` selects the `k` for the current round count.
 
 use std::collections::BTreeMap;
 
@@ -32,7 +21,6 @@ use rand_v10::rngs::SysRng;
 
 use crate::{benchmark_seed, BoxError, ProofBox, System};
 
-/// The proving and verifying keys for one configuration.
 type Keys = (ProvingKey<EqAffine>, VerifyingKey<EqAffine>);
 
 struct Prepared {
@@ -44,15 +32,12 @@ struct Prepared {
     keys: Option<Keys>,
 }
 
-/// Harness adapter for Halo2 over Pasta.
 pub struct Halo2System {
-    /// Universal parameters, one per measured domain exponent.
     params: BTreeMap<u32, Params<EqAffine>>,
     prepared: Option<Prepared>,
 }
 
 impl Halo2System {
-    /// Create an adapter with no prepared state.
     pub fn new() -> Self {
         Self {
             params: BTreeMap::new(),
@@ -60,7 +45,6 @@ impl Halo2System {
         }
     }
 
-    /// Universal parameters for the prepared domain.
     fn params(&self) -> Result<&Params<EqAffine>, BoxError> {
         let prepared = match &self.prepared {
             Some(prepared) => prepared,
@@ -88,14 +72,13 @@ impl System for Halo2System {
     }
 
     fn prepare_universal(&mut self, max_rounds: usize) -> Result<(), BoxError> {
-        // Measure the largest circuit instead of trusting a layout formula, so
-        // every domain covers the actual row count.
+        // Measure the largest circuit rather than a layout formula.
         let mimc = MimcParams::<Fp>::load(max_rounds, 5)
             .map_err(|error| -> BoxError { Box::new(error) })?;
         let k_max = halo2::params_k(&mimc).map_err(|error| -> BoxError { Box::new(error) })?;
 
-        // `Params::new` derives the generators from a hash-to-curve, so it
-        // needs no RNG. One set per domain; the small ones are cheap.
+        // `Params::new` derives generators by hashing to the curve, so it needs
+        // no RNG.
         self.params.clear();
         for k in 1..=k_max {
             self.params.insert(k, Params::new(k));
@@ -224,9 +207,7 @@ impl System for Halo2System {
 
         let mut transcript = Blake2bRead::<_, EqAffine, Challenge255<EqAffine>>::init(&bytes[..]);
 
-        // A rejected proof is a `false` result, not an adapter failure. The
-        // transcript is built from the stored bytes, so this also covers a
-        // malformed proof.
+        // A rejected or malformed proof is `false`, not an adapter failure.
         Ok(verify_proof(
             params,
             &keys.1,

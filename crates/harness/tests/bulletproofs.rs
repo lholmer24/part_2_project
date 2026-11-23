@@ -17,8 +17,7 @@ fn bulletproofs_round_trip_through_harness() {
 
     assert!(result.failures.is_empty(), "{:?}", result.failures);
 
-    // Bulletproofs has no setup phase, so each round count writes one prove row
-    // and one verify row.
+    // No setup: one prove and one verify row per round count.
     assert_eq!(result.records.len(), 2 * 2);
 
     for record in result

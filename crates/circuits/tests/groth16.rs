@@ -1,7 +1,4 @@
 //! Groth16 circuit tests.
-//!
-//! These tests exercise the circuit and the arkworks API directly. The harness
-//! adapter is tested through the `System` trait in `crates/harness/tests`.
 
 use ark_bls12_381::{Bls12_381, Fr};
 use ark_groth16::{prepare_verifying_key, Groth16, PreparedVerifyingKey, Proof};

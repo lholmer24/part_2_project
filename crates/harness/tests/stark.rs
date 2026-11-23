@@ -16,8 +16,7 @@ fn stark_round_trip_through_harness() {
 
     assert!(result.failures.is_empty(), "{:?}", result.failures);
 
-    // STARK is transparent, so each round count writes one prove row and one
-    // verify row.
+    // Transparent: one prove and one verify row per round count.
     assert_eq!(result.records.len(), 2 * 2);
 
     for record in result

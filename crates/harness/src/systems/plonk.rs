@@ -1,11 +1,7 @@
-//! PLONK adapter for the benchmark harness.
+//! PLONK adapter.
 //!
-//! The adapter calls `dusk-plonk` directly. It holds no timer, so the harness
-//! times setup, proving and verification at one call boundary.
-//!
-//! The universal KZG parameters are built once in
-//! [`System::prepare_universal`](crate::System::prepare_universal) and are not
-//! reset by [`System::prepare`](crate::System::prepare).
+//! The KZG parameters are built once in `prepare_universal` and survive
+//! `prepare`.
 
 use circuits::plonk::MimcPreimageCircuit;
 use dusk_bytes::Serializable;
@@ -16,7 +12,6 @@ use rand_core::OsRng;
 
 use crate::{benchmark_seed, BoxError, ProofBox, System};
 
-/// Domain-separation label for the compiled circuit.
 const LABEL: &[u8] = b"mimc-plonk-v1";
 
 struct Prepared {
@@ -26,21 +21,17 @@ struct Prepared {
     keys: Option<(Prover, Verifier)>,
 }
 
-/// A PLONK proof plus the public inputs that the prover extracted from the
-/// circuit. The verifier needs both.
 struct PlonkProof {
     proof: Proof,
     public_inputs: Vec<BlsScalar>,
 }
 
-/// Harness adapter for PLONK over BLS12-381.
 pub struct PlonkSystem {
     public_parameters: Option<PublicParameters>,
     prepared: Option<Prepared>,
 }
 
 impl PlonkSystem {
-    /// Create an adapter with no prepared state.
     pub fn new() -> Self {
         Self {
             public_parameters: None,
@@ -65,8 +56,7 @@ impl System for PlonkSystem {
     }
 
     fn prepare_universal(&mut self, max_rounds: usize) -> Result<(), BoxError> {
-        // Measure the largest circuit instead of trusting the layout formula,
-        // so the parameters always cover the actual gate count.
+        // Size from a measured synthesis, not the layout formula.
         let params = MimcParams::<BlsScalar>::load(max_rounds, 5)
             .map_err(|error| -> BoxError { Box::new(error) })?;
         let max_degree = circuits::plonk::circuit_size(&params)
@@ -184,8 +174,7 @@ impl System for PlonkSystem {
             .downcast_ref::<PlonkProof>()
             .ok_or("plonk proof type mismatch")?;
 
-        // Verification errors mean the proof is rejected, so report them as
-        // `false` instead of an adapter failure.
+        // A verification error is a rejected proof, not an adapter failure.
         Ok(keys.1.verify(&proof.proof, &proof.public_inputs).is_ok())
     }
 }

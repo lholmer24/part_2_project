@@ -1,32 +1,14 @@
-//! The MiMC preimage statement as a Halo2 circuit.
+//! Halo2 MiMC preimage circuit.
 //!
-//! The circuit has one public hash, `h`, and the private witness `x`. It must
-//! enforce `h = E(x) + x` over the parameters' rounds.
+//! The `state` column holds `x, s_0, ..., s_r`. A round gate, enabled on rows
+//! `0 .. r-1`, enforces
 //!
-//! # Layout
+//! ```text
+//! state(i + 1) = (state(i) + c_i)^5
+//! ```
 //!
-//! The circuit uses two gates and one region:
-//!
-//! - `state` holds the chain: row 0 is the preimage, row `i + 1` is the output
-//!   of round `i`, and row `rounds` is `E(x)`.
-//! - `constant` is a fixed column holding round constant `c_i` at row `i`.
-//! - The round gate is enabled on rows `0 .. rounds - 1` and relates
-//!   `state(i + 1)` to the round function of `state(i)` and `c_i`.
-//! - The statement gate is enabled on row `rounds` and relates the final
-//!   state, `preimage` and `hash`.
-//! - `preimage` is copy-constrained to the row-0 state.
-//! - `hash` is constrained to the instance column at row 0.
-//!
-//! The sizing helper and the tests assume one instance column that holds the
-//! public hash `h` in row 0. Keep that convention, or update
-//! [`INSTANCE_COLUMNS_FOR_SIZING`] and the tests with the layout.
-//!
-//! # Sizing
-//!
-//! Halo2 needs a domain `2^k` before any key can be generated. [`params_k`]
-//! synthesises the circuit with [`MockProver`] and returns the smallest `k` that
-//! the synthesis fits. The adapter caches one IPA `Params` per measured `k`, so
-//! the parameters cannot drift from the layout.
+//! and a finish gate enforces `state(r) + x = h`. `x` is copy-constrained to
+//! row 0 and `h` to the instance column.
 
 use halo2_proofs::{
     circuit::{Layouter, SimpleFloorPlanner, Value},
@@ -37,61 +19,29 @@ use halo2_proofs::{
 };
 use mimc::{MimcParams, Statement};
 
-/// Instance columns that [`params_k`] assumes.
-///
-/// The statement has one public value, so one instance column is the natural
-/// layout and the tests use it too. A layout with more instance columns must
-/// update this constant.
 pub const INSTANCE_COLUMNS_FOR_SIZING: usize = 1;
 
-/// Largest domain exponent that [`params_k`] tries.
-///
-/// [`halo2_proofs::poly::commitment::Params::new`] asserts `k < 32`.
 pub const MAX_K: u32 = 31;
 
-/// Halo2 configuration for the MiMC circuit.
-///
-/// `Circuit::Config` requires `Clone`, so the configuration derives it.
 #[derive(Clone, Debug)]
 pub struct Config {
-    /// MiMC chain, one row per round state.
     pub state: Column<Advice>,
-    /// Round constant for the row's round.
     pub constant: Column<Fixed>,
-    /// Enables the round gate on round rows.
     pub round: Selector,
-    /// Public hash, bound to the hash cell.
     pub instance: Column<Instance>,
-    /// Private preimage at the finish row, copied from the chain input.
     pub preimage: Column<Advice>,
-    /// Public hash cell at the finish row.
     pub hash: Column<Advice>,
-    /// Enables the statement gate on the finish row.
     pub finish: Selector,
 }
 
-/// Halo2 circuit for the MiMC preimage statement.
-///
-/// The shared circuit type is aliased with the Pasta field.
 pub type MimcPreimageCircuit = crate::MimcPreimageCircuit<Fp>;
 
-/// Expected number of domain rows for `rounds` MiMC rounds.
-///
-/// This is the test oracle for the layout, in the same way that
-/// [`crate::plonk::gate_count`] is the oracle for the PLONK layout. The value
-/// includes the blinding rows that key generation reserves after the circuit
-/// rows, so `domain_rows(rounds).next_power_of_two()` is the smallest domain
-/// that holds the circuit.
-///
-/// The layout uses `rounds + 1` rows: one per round plus the final state. The
-/// gates query `state` at `cur` and `next`, and `preimage` and `hash` at `cur`,
-/// so the blinding factor is `max(3, 2) + 2 = 5`. Key generation needs
-/// `2^k >= rows + blinding + 1`, and the minimum is `blinding + 3 = 8`.
+/// Rows plus five blinding rows. Key generation needs
+/// `2^k >= rows + blinding + 1`, with `blinding = max(3, advice queries) + 2`.
 pub fn domain_rows(rounds: usize) -> usize {
     (rounds + 7).max(8)
 }
 
-/// Smallest `k` such that `2^k >= rows`.
 pub fn k_for_rows(rows: usize) -> u32 {
     let mut k = 0u32;
     while (1usize << k) < rows {
@@ -100,18 +50,8 @@ pub fn k_for_rows(rows: usize) -> u32 {
     k
 }
 
-/// Smallest domain exponent that holds the circuit for `params`.
-///
-/// The circuit is synthesised with [`MockProver`], which places every cell and
-/// copy through the circuit's floor planner and rejects a row outside the usable
-/// domain. That makes the result a measured size, not a hand-computed formula.
-///
-/// The witness values are placeholders. Synthesis and row placement do not
-/// depend on them, so any preimage works. Both the hash and the instance value
-/// are zero, so the pass does not need the real statement.
-///
-/// [`MockProver::run`] requires a value for every instance column, so the pass
-/// uses [`INSTANCE_COLUMNS_FOR_SIZING`] dummy columns.
+/// Smallest domain exponent that holds the circuit, measured with
+/// `MockProver`. The witness values are placeholders; only the layout matters.
 pub fn params_k(params: &MimcParams<Fp>) -> Result<u32, Error> {
     let circuit = MimcPreimageCircuit {
         statement: Statement {
@@ -130,10 +70,7 @@ pub fn params_k(params: &MimcParams<Fp>) -> Result<u32, Error> {
         }
     };
 
-    // A larger domain always holds the same circuit, so the predicate is
-    // monotone. The scan is linear in `k` and only runs in the untimed
-    // universal preparation; probes below `k = 3` do no synthesis because
-    // `MockProver` rejects them on `minimum_rows` first.
+    // A larger domain always fits, so the scan is monotone.
     for k in 1..=MAX_K {
         if fits(k)? {
             return Ok(k);
@@ -213,7 +150,6 @@ impl Circuit<Fp> for MimcPreimageCircuit {
         let params = &self.statement.params;
         let rounds = params.rounds;
 
-        // The witness is known while proving and unknown while generating keys.
         let x = match self.statement.preimage {
             Some(x) => Value::known(x),
             None => Value::unknown(),
@@ -223,8 +159,6 @@ impl Circuit<Fp> for MimcPreimageCircuit {
         let hash_cell = layouter.assign_region(
             || "mimc",
             |mut region| {
-                // Rows 0 ..= rounds hold the chain: row 0 is the preimage and
-                // row i + 1 is the output of round i.
                 let mut state = x;
                 let first_state = region.assign_advice(|| "state", config.state, 0, || state)?;
 
@@ -242,8 +176,6 @@ impl Circuit<Fp> for MimcPreimageCircuit {
                         config.state,
                         row + 1,
                         || {
-                            // The closure runs once, in the assignment pass, so
-                            // the chain is not recomputed by the shape pass.
                             let t1 = state + Value::known(*constant);
                             let t2 = t1 * t1;
                             let t4 = t2 * t2;
@@ -253,9 +185,8 @@ impl Circuit<Fp> for MimcPreimageCircuit {
                     state = next.value().copied();
                 }
 
-                // The finish gate reads the final state at `cur`, so it is
-                // enabled on the row after the last round, where that state is
-                // E(x).
+                // The finish gate reads `cur`, so it sits on the row after the
+                // last round, where the state is E(x).
                 let finish_row = rounds;
                 let preimage_cell =
                     region.assign_advice(|| "preimage", config.preimage, finish_row, || x)?;
@@ -263,7 +194,6 @@ impl Circuit<Fp> for MimcPreimageCircuit {
                     region.assign_advice(|| "hash", config.hash, finish_row, || hash)?;
                 config.finish.enable(&mut region, finish_row)?;
 
-                // The preimage under the hash must be the chain input.
                 region.constrain_equal(first_state.cell(), preimage_cell.cell())?;
 
                 Ok(hash_cell)

@@ -1,7 +1,4 @@
-//! Groth16 adapter for the benchmark harness.
-//!
-//! The adapter calls `ark-groth16` directly. It holds no timer, so the harness
-//! times setup, proving and verification at one call boundary.
+//! Groth16 adapter.
 
 use ark_bls12_381::{Bls12_381, Fr};
 use ark_groth16::{prepare_verifying_key, Groth16, PreparedVerifyingKey, ProvingKey};
@@ -23,14 +20,12 @@ struct Prepared {
     keys: Option<Keys>,
 }
 
-/// Harness adapter for Groth16 over BLS12-381.
 #[derive(Default)]
 pub struct Groth16System {
     prepared: Option<Prepared>,
 }
 
 impl Groth16System {
-    /// Create an adapter with no prepared state.
     pub fn new() -> Self {
         Self::default()
     }

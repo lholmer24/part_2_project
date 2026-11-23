@@ -1,63 +1,35 @@
 //! Field adapters for the MiMC core.
-//!
-//! The proof systems use different scalar-field types. This module gives them
-//! one small interface so the MiMC code stays generic.
 
 use core::fmt::Write as _;
 
-/// Canonical field names.
-///
-/// These are the file stems in `params/round_constants/` and the values written
-/// to the CSV `field` column. [`MimcField::NAME`] and the harness adapters both
-/// use them, so each name has one definition.
+/// Canonical names: the round-constant file stems and the CSV field column.
 pub mod names {
-    /// BLS12-381 scalar field, used by Groth16 and PLONK.
     pub const BLS12_381_FR: &str = "bls12_381_fr";
-    /// Ristretto255 scalar field, used by Bulletproofs and Spartan.
     pub const RISTRETTO255_SCALAR: &str = "ristretto255_scalar";
-    /// Pasta `Fp`, used by Halo2.
     pub const PASTA_FP: &str = "pasta_fp";
-    /// winterfell `f128`, used by STARK.
     pub const WINTERFELL_F128: &str = "winterfell_f128";
 }
 
-/// Small interface over a prime field.
-///
-/// Implementations adapt one concrete field type. The MiMC code only needs
-/// addition, multiplication and exponentiation.
 pub trait MimcField: Copy + Clone + core::fmt::Debug + Eq {
-    /// File stem used in `params/round_constants/<NAME>.txt`.
     const NAME: &'static str;
 
-    /// The additive identity.
     fn zero() -> Self;
 
-    /// The multiplicative identity.
     fn one() -> Self;
 
-    /// Lift a small integer into the field.
     fn from_u64(value: u64) -> Self;
 
-    /// Field addition.
     fn add(self, rhs: Self) -> Self;
 
-    /// Field multiplication.
     fn mul(self, rhs: Self) -> Self;
 
-    /// Canonical hexadecimal representation, without a `0x` prefix.
     fn to_hex(self) -> String;
 
-    /// Parse one 32-byte block as a canonical field element.
-    ///
-    /// Returns `None` when the block encodes an integer at least the field
-    /// modulus. Rejection sampling uses this to produce an exactly uniform
-    /// field element from a uniform byte stream.
+    /// Parse one 32-byte block. Returns `None` when the integer is at least the
+    /// modulus, which makes rejection sampling exactly uniform.
     fn from_uniform_bytes(bytes: &[u8; 32]) -> Option<Self>;
 
-    /// Parse a decimal integer into the field.
-    ///
-    /// The default implementation accumulates digits with field operations, so
-    /// it handles constants wider than 64 bits.
+    /// Accumulate digits with field operations, so constants may exceed 64 bits.
     fn from_decimal(text: &str) -> Option<Self> {
         let text = text.trim();
         if text.is_empty() {
@@ -74,7 +46,6 @@ pub trait MimcField: Copy + Clone + core::fmt::Debug + Eq {
         Some(value)
     }
 
-    /// Exponentiation by a `u64` exponent.
     fn pow_u64(self, mut exponent: u64) -> Self {
         let mut result = Self::one();
         let mut base = self;
@@ -89,11 +60,8 @@ pub trait MimcField: Copy + Clone + core::fmt::Debug + Eq {
     }
 }
 
-/// Sample one field element uniformly from a 32-byte seed.
-///
-/// The seed is expanded with the Blake3 XOF. Each 32-byte block is interpreted
-/// as an unsigned integer and accepted only if it is below the field modulus,
-/// so the result is exactly uniform over the field.
+/// Expand with Blake3-XOF and reject blocks at or above the modulus, so the
+/// result is exactly uniform over the field.
 pub fn uniform_from_seed<F: MimcField>(seed: &[u8; 32]) -> F {
     let mut hasher = blake3::Hasher::new();
     hasher.update(seed);
@@ -108,7 +76,6 @@ pub fn uniform_from_seed<F: MimcField>(seed: &[u8; 32]) -> F {
     }
 }
 
-/// Format little-endian bytes as a minimal lowercase hex string.
 fn hex_from_le_bytes(bytes: &[u8]) -> String {
     let mut out = String::with_capacity(bytes.len() * 2);
     for byte in bytes.iter().rev() {
@@ -157,9 +124,9 @@ impl MimcField for ark_bls12_381::Fr {
     }
 }
 
-// dusk-plonk uses its own BLS12-381 scalar type. It has the same modulus as
-// `ark_bls12_381::Fr`, so it shares the same constant file and field name.
-// `to_bytes` is canonical little-endian, which matches `hex_from_le_bytes`.
+// dusk-plonk uses its own BLS12-381 scalar type. Same modulus and canonical
+// little-endian encoding as `ark_bls12_381::Fr`, so both share one constant
+// file and one field name.
 impl MimcField for dusk_bls12_381::BlsScalar {
     const NAME: &'static str = names::BLS12_381_FR;
 

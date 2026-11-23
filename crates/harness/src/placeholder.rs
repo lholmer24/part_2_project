@@ -1,17 +1,12 @@
-//! Trivial system used by harness tests.
-//!
-//! The placeholder does no real work. It exists so the harness can be tested
-//! before a proof system is wired in. It is not registered in
-//! [`crate::systems`], so a normal run cannot write placeholder rows.
+//! Trivial system used by harness tests. It is not registered, so a normal run
+//! cannot write placeholder rows.
 
 use crate::{BoxError, ProofBox, System};
 
-/// Placeholder proof system.
 #[derive(Clone, Debug, Default)]
 pub struct PlaceholderSystem;
 
 impl PlaceholderSystem {
-    /// Create the placeholder system.
     pub fn new() -> Self {
         Self
     }
