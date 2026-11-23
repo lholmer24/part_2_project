@@ -138,6 +138,12 @@ is part of proving and is also timed. `circuits::stark::build_trace` builds the 
 adapter calls the AIR, the trace builder and the winterfell prover inside the
 timed block.
 
+Winterfell builds the AIR itself inside `prove` and `verify`, so the round
+constants travel with `MimcPublicInputs` instead of being reloaded by
+`Air::new`. The constants are protocol parameters, not public inputs, so
+`ToElements` hashes only the hash and the round count. This keeps the file read
+and decimal parse out of the timed phases.
+
 ## Halo2
 
 Library: `halo2_proofs` 0.4.1 over Pasta.
@@ -167,6 +173,11 @@ Lagrange bases for that exact `k`, so one set per `k` is the equivalent.
 Halo2 timings remain a staircase in the domain `2^k`, not a function of the
 round count, because consecutive round counts can share a domain. Plot Halo2
 against `2^k` where the analysis compares it with PLONK.
+
+The finish gate reads the public hash from the instance column on row `rounds`,
+so the instance vector has length `rounds + 1`. Building it from the reference
+hash belongs to statement preparation, like the hash itself: the adapter builds
+it in `prepare` and `prepare_instance`, outside the timed phases.
 
 ## Spartan
 
