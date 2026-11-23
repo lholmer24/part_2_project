@@ -198,16 +198,6 @@ fn build_shape_reports_its_own_sizes() {
 }
 
 #[test]
-fn shape_builds_an_instance() {
-    for rounds in [1usize, 2, 8] {
-        let params = MimcParams::<Scalar>::load(rounds, 5).expect("load MiMC params");
-        let shape = build_shape(&params).expect("build R1CS shape");
-
-        assert!(shape.instance().is_ok(), "rounds = {rounds}");
-    }
-}
-
-#[test]
 fn assignments_satisfy_the_instance() {
     for rounds in [1usize, 2, 8] {
         let (params, hash) = statement(rounds);

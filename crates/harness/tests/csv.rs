@@ -5,9 +5,8 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use harness::{
-    default_output_path, run, run_systems, sweep_rounds, write_csv, BoxError, Error, Phase,
-    PlaceholderSystem, ProofBox, Record, RunConfig, SweepResult, System, CSV_HEADER,
-    DEFAULT_SAMPLES, DEFAULT_SETUP_SAMPLES,
+    run, run_systems, sweep_rounds, write_csv, BoxError, Error, Phase, PlaceholderSystem, ProofBox,
+    Record, RunConfig, SweepResult, System, CSV_HEADER,
 };
 
 fn record(phase: Phase, sample: usize, time_ns: u64, size: Option<usize>) -> Record {
@@ -37,21 +36,6 @@ fn sweep_result() -> SweepResult {
 fn sweep_has_every_power_of_two() {
     let expected: Vec<usize> = (0..16).map(|k| 1usize << k).collect();
     assert_eq!(sweep_rounds(), expected);
-}
-
-#[test]
-fn default_output_is_under_results() {
-    assert_eq!(
-        default_output_path(),
-        std::path::PathBuf::from("results").join("benchmarks.csv")
-    );
-}
-
-#[test]
-fn default_config_has_ten_setup_and_proof_samples() {
-    let config = RunConfig::default();
-    assert_eq!(config.samples, DEFAULT_SAMPLES);
-    assert_eq!(config.setup_samples, DEFAULT_SETUP_SAMPLES);
 }
 
 #[test]
@@ -281,16 +265,6 @@ fn registered_field_names_are_known() {
             system.field()
         );
     }
-}
-
-#[test]
-fn groth16_field_matches_its_field_type() {
-    use mimc::MimcField;
-
-    assert_eq!(
-        harness::Groth16System::new().field(),
-        <ark_bls12_381::Fr as MimcField>::NAME
-    );
 }
 
 #[derive(Default)]

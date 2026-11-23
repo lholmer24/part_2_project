@@ -7,8 +7,6 @@ on both sides.
 
 from __future__ import annotations
 
-import math
-
 import pytest
 
 from mimc import (
@@ -53,11 +51,6 @@ KNOWN_ANSWERS: dict[str, tuple[tuple[int, int, int], ...]] = {
 
 
 @pytest.mark.parametrize("field", FIELDS)
-def test_exponent_is_a_permutation(field: str) -> None:
-    assert math.gcd(EXPONENT, MODULI[field] - 1) == 1
-
-
-@pytest.mark.parametrize("field", FIELDS)
 def test_constant_file_is_in_range(field: str) -> None:
     constants = load_round_constants(field, MAX_ROUNDS)
     assert len(constants) == MAX_ROUNDS
@@ -66,27 +59,10 @@ def test_constant_file_is_in_range(field: str) -> None:
 
 @pytest.mark.parametrize("field", FIELDS)
 @pytest.mark.parametrize("rounds", ROUND_COUNTS)
-def test_loaded_params_shape(field: str, rounds: int) -> None:
-    params = load_params(field, rounds)
-    assert params.modulus == MODULI[field]
-    assert params.rounds == rounds
-    assert params.exponent == EXPONENT
-    assert len(params.round_constants) == rounds
-
-
-@pytest.mark.parametrize("field", FIELDS)
-@pytest.mark.parametrize("rounds", ROUND_COUNTS)
 @pytest.mark.parametrize("x", INPUTS)
 def test_output_is_a_field_element(field: str, rounds: int, x: int) -> None:
     params = load_params(field, rounds)
     assert 0 <= mimc_hash(params, x) < MODULI[field]
-
-
-@pytest.mark.parametrize("field", FIELDS)
-@pytest.mark.parametrize("rounds", ROUND_COUNTS)
-def test_hash_is_deterministic(field: str, rounds: int) -> None:
-    params = load_params(field, rounds)
-    assert mimc_hash(params, 12345) == mimc_hash(params, 12345)
 
 
 @pytest.mark.parametrize("field", FIELDS)

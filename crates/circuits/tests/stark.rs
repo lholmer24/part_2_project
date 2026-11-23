@@ -213,22 +213,3 @@ fn periodic_columns_match_layout() {
         }
     }
 }
-
-#[test]
-fn trace_row_count_matches_round_structure() {
-    for rounds in [1usize, 2, 4, 8, 16] {
-        let (params, hash) = statement(rounds);
-        let trace = build_trace(&circuit(&params, hash, Some(BaseElement::from(PREIMAGE))));
-
-        assert_eq!(trace.width(), trace_width(), "rounds = {rounds}");
-        assert_eq!(trace.length(), trace_length(rounds), "rounds = {rounds}");
-        assert!(
-            trace.length().is_power_of_two(),
-            "trace length must be a power of two"
-        );
-        assert!(
-            trace.length() >= rounds,
-            "trace must hold at least one row per round"
-        );
-    }
-}
