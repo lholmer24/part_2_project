@@ -25,8 +25,9 @@ type Keys = (ProvingKey<EqAffine>, VerifyingKey<EqAffine>);
 
 struct Prepared {
     mimc: MimcParams<Fp>,
-    hash: Fp,
     preimage: Fp,
+    /// Built untimed: the finish gate reads the hash at row `rounds`.
+    instance: Vec<Fp>,
     /// Domain exponent measured for this round count.
     k: u32,
     keys: Option<Keys>,
@@ -95,8 +96,8 @@ impl System for Halo2System {
 
         self.prepared = Some(Prepared {
             mimc,
-            hash,
             preimage,
+            instance: halo2::instance_values(hash, rounds),
             k,
             keys: None,
         });
@@ -109,8 +110,9 @@ impl System for Halo2System {
             None => return Err("halo2 prepare was not run".into()),
         };
         let preimage = mimc::uniform_from_seed::<Fp>(&benchmark_seed(rounds, instance));
-        prepared.hash = mimc::hash(&prepared.mimc, preimage);
+        let hash = mimc::hash(&prepared.mimc, preimage);
         prepared.preimage = preimage;
+        prepared.instance = halo2::instance_values(hash, rounds);
         Ok(())
     }
 
@@ -123,7 +125,7 @@ impl System for Halo2System {
             MimcPreimageCircuit {
                 statement: Statement {
                     params: prepared.mimc.clone(),
-                    hash: prepared.hash,
+                    hash: *prepared.instance.last().expect("instance values"),
                     // Shape only: key generation assigns no witness values.
                     preimage: None,
                 },
@@ -158,12 +160,11 @@ impl System for Halo2System {
         let circuit = MimcPreimageCircuit {
             statement: Statement {
                 params: prepared.mimc.clone(),
-                hash: prepared.hash,
+                hash: *prepared.instance.last().expect("instance values"),
                 preimage: Some(prepared.preimage),
             },
         };
-        let instance = [prepared.hash];
-        let columns: [&[Fp]; 1] = [&instance];
+        let columns: [&[Fp]; 1] = [&prepared.instance];
         let instances: [&[&[Fp]]; 1] = [&columns];
 
         let mut transcript = Blake2bWrite::<_, EqAffine, Challenge255<EqAffine>>::init(Vec::new());
@@ -201,8 +202,7 @@ impl System for Halo2System {
             .downcast_ref::<Vec<u8>>()
             .ok_or("halo2 proof type mismatch")?;
 
-        let instance = [prepared.hash];
-        let columns: [&[Fp]; 1] = [&instance];
+        let columns: [&[Fp]; 1] = [&prepared.instance];
         let instances: [&[&[Fp]]; 1] = [&columns];
 
         let mut transcript = Blake2bRead::<_, EqAffine, Challenge255<EqAffine>>::init(&bytes[..]);

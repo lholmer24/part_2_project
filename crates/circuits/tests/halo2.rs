@@ -1,11 +1,12 @@
 //! Halo2 acceptance and rejection tests.
 
-use circuits::halo2::{domain_rows, k_for_rows, params_k, MimcPreimageCircuit};
+use circuits::halo2::{domain_rows, instance_values, k_for_rows, params_k, MimcPreimageCircuit};
 use halo2_proofs::{
     dev::MockProver,
     pasta::{EqAffine, Fp},
     plonk::{
-        create_proof, keygen_pk, keygen_vk, verify_proof, ProvingKey, SingleVerifier, VerifyingKey,
+        create_proof, keygen_pk, keygen_vk, verify_proof, Circuit, ConstraintSystem, ProvingKey,
+        SingleVerifier, VerifyingKey,
     },
     poly::commitment::Params,
     transcript::{Blake2bRead, Blake2bWrite, Challenge255},
@@ -42,6 +43,7 @@ fn universal_parameters(rounds: usize) -> Params<EqAffine> {
 struct Proof {
     vk: VerifyingKey<EqAffine>,
     hash: Fp,
+    rounds: usize,
     bytes: Vec<u8>,
 }
 
@@ -52,7 +54,7 @@ fn build_with(params: &Params<EqAffine>, rounds: usize) -> Proof {
     let vk = keygen_vk(params, &shape).expect("keygen_vk");
     let pk: ProvingKey<EqAffine> = keygen_pk(params, vk.clone(), &shape).expect("keygen_pk");
 
-    let instance = [hash];
+    let instance = instance_values(hash, rounds);
     let columns: [&[Fp]; 1] = [&instance];
     let instances: [&[&[Fp]]; 1] = [&columns];
 
@@ -70,6 +72,7 @@ fn build_with(params: &Params<EqAffine>, rounds: usize) -> Proof {
     Proof {
         vk,
         hash,
+        rounds,
         bytes: transcript.finalize(),
     }
 }
@@ -81,7 +84,7 @@ fn build(rounds: usize) -> (Params<EqAffine>, Proof) {
 }
 
 fn verify_with_hash(params: &Params<EqAffine>, proof: &Proof, hash: Fp) -> bool {
-    let instance = [hash];
+    let instance = instance_values(hash, proof.rounds);
     let columns: [&[Fp]; 1] = [&instance];
     let instances: [&[&[Fp]]; 1] = [&columns];
 
@@ -106,7 +109,7 @@ fn mock_prover_accepts_valid_witness() {
         let prover = MockProver::run(
             k,
             &circuit(&params, hash, Some(Fp::from(PREIMAGE))),
-            vec![vec![hash]],
+            vec![instance_values(hash, rounds)],
         )
         .expect("run mock prover");
 
@@ -176,4 +179,14 @@ fn domain_matches_round_structure() {
             "rounds = {rounds}"
         );
     }
+}
+
+#[test]
+fn constraint_system_degree_matches_layout() {
+    // A selector adds one degree, so each round gate is degree 3. Anything
+    // larger multiplies the quotient domain by a power of two.
+    let mut cs = ConstraintSystem::<Fp>::default();
+    let _ = <MimcPreimageCircuit as Circuit<Fp>>::configure(&mut cs);
+
+    assert_eq!(cs.degree(), 3);
 }

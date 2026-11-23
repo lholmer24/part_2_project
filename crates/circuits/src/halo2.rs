@@ -1,14 +1,25 @@
 //! Halo2 MiMC preimage circuit.
 //!
-//! The `state` column holds `x, s_0, ..., s_r`. A round gate, enabled on rows
-//! `0 .. r-1`, enforces
+//! Column `state` holds `x, s_1, ..., s_r`, and row `i < r` runs four gates
+//! with the `round` selector on the 2-4-5 chain:
 //!
 //! ```text
-//! state(i + 1) = (state(i) + c_i)^5
+//! preimage(row+1) = preimage(row)          (x is carried)
+//! square          = (state + c_i)^2
+//! fourth          = square^2
+//! state(row+1)    = fourth * (state + c_i)
 //! ```
 //!
-//! and a finish gate enforces `state(r) + x = h`. `x` is copy-constrained to
-//! row 0 and `h` to the instance column.
+//! Row 0 ties `state` to `preimage`, and row `r` checks `state + x = h`
+//! against the instance column, so the hash sits at index `rounds` of the
+//! instance vector.
+//!
+//! Both structural choices follow from `halo2_proofs` accounting. A selector
+//! adds one degree, and the degree sets the quotient domain and the `h` piece
+//! count (`degree - 1`), so the chain is split into degree-2 gates to give 3
+//! rather than 6. The permutation argument commits one product polynomial per
+//! `max(1, degree - 2)` equality-enabled columns, so degree 3 leaves no room:
+//! the circuit enables no equality and carries `x` in an advice column.
 
 use halo2_proofs::{
     circuit::{Layouter, SimpleFloorPlanner, Value},
@@ -26,15 +37,25 @@ pub const MAX_K: u32 = 31;
 #[derive(Clone, Debug)]
 pub struct Config {
     pub state: Column<Advice>,
+    pub square: Column<Advice>,
+    pub fourth: Column<Advice>,
+    /// Carried on every row, so the constant gate replaces a copy constraint.
+    pub preimage: Column<Advice>,
     pub constant: Column<Fixed>,
     pub round: Selector,
-    pub instance: Column<Instance>,
-    pub preimage: Column<Advice>,
-    pub hash: Column<Advice>,
+    pub first: Selector,
     pub finish: Selector,
+    pub instance: Column<Instance>,
 }
 
 pub type MimcPreimageCircuit = crate::MimcPreimageCircuit<Fp>;
+
+/// The finish gate reads row `rounds`, so the vector is padded to that index.
+pub fn instance_values(hash: Fp, rounds: usize) -> Vec<Fp> {
+    let mut values = vec![Fp::from(0u64); rounds + 1];
+    values[rounds] = hash;
+    values
+}
 
 /// Rows plus five blinding rows. Key generation needs
 /// `2^k >= rows + blinding + 1`, with `blinding = max(3, advice queries) + 2`.
@@ -60,12 +81,13 @@ pub fn params_k(params: &MimcParams<Fp>) -> Result<u32, Error> {
             preimage: Some(Fp::from(0u64)),
         },
     };
-    let instance = vec![vec![Fp::from(0u64)]; INSTANCE_COLUMNS_FOR_SIZING];
+    let instance = vec![instance_values(Fp::from(0u64), params.rounds)];
 
     let fits = |k: u32| -> Result<bool, Error> {
         match MockProver::run(k, &circuit, instance.clone()) {
             Ok(_) => Ok(true),
             Err(Error::NotEnoughRowsAvailable { .. }) => Ok(false),
+            Err(Error::InstanceTooLarge) => Ok(false),
             Err(error) => Err(error),
         }
     };
@@ -96,49 +118,77 @@ impl Circuit<Fp> for MimcPreimageCircuit {
 
     fn configure(meta: &mut ConstraintSystem<Fp>) -> Self::Config {
         let state = meta.advice_column();
+        let square = meta.advice_column();
+        let fourth = meta.advice_column();
+        let preimage = meta.advice_column();
         let constant = meta.fixed_column();
         let round = meta.selector();
-        let instance = meta.instance_column();
-        let preimage = meta.advice_column();
-        let hash = meta.advice_column();
+        let first = meta.selector();
         let finish = meta.selector();
+        let instance = meta.instance_column();
 
-        meta.enable_equality(state);
-        meta.enable_equality(instance);
-        meta.enable_equality(preimage);
-        meta.enable_equality(hash);
+        meta.create_gate("mimc preimage", |meta| {
+            let enabled = meta.query_selector(round);
+            let x = meta.query_advice(preimage, Rotation::cur());
+            let next = meta.query_advice(preimage, Rotation::next());
 
-        meta.create_gate("mimc round", |meta| {
+            vec![enabled * (next - x)]
+        });
+
+        meta.create_gate("mimc square", |meta| {
             let enabled = meta.query_selector(round);
             let s = meta.query_advice(state, Rotation::cur());
             let c = meta.query_fixed(constant);
+            let t2 = meta.query_advice(square, Rotation::cur());
+
+            vec![enabled * (t2 - (s + c).square())]
+        });
+
+        meta.create_gate("mimc fourth", |meta| {
+            let enabled = meta.query_selector(round);
+            let t2 = meta.query_advice(square, Rotation::cur());
+            let t4 = meta.query_advice(fourth, Rotation::cur());
+
+            vec![enabled * (t4 - t2.square())]
+        });
+
+        meta.create_gate("mimc chain", |meta| {
+            let enabled = meta.query_selector(round);
+            let s = meta.query_advice(state, Rotation::cur());
+            let c = meta.query_fixed(constant);
+            let t4 = meta.query_advice(fourth, Rotation::cur());
             let next = meta.query_advice(state, Rotation::next());
 
-            let t1 = s + c;
-            let t2 = t1.clone().square();
-            let t4 = t2.square();
-            let t5 = t4 * t1;
+            vec![enabled * (next - t4 * (s + c))]
+        });
 
-            vec![enabled * (t5 - next)]
+        meta.create_gate("mimc start", |meta| {
+            let enabled = meta.query_selector(first);
+            let s = meta.query_advice(state, Rotation::cur());
+            let x = meta.query_advice(preimage, Rotation::cur());
+
+            vec![enabled * (s - x)]
         });
 
         meta.create_gate("mimc statement", |meta| {
-            let fin_enabled = meta.query_selector(finish);
+            let enabled = meta.query_selector(finish);
             let s = meta.query_advice(state, Rotation::cur());
             let x = meta.query_advice(preimage, Rotation::cur());
-            let h = meta.query_advice(hash, Rotation::cur());
+            let h = meta.query_instance(instance, Rotation::cur());
 
-            vec![fin_enabled * ((s + x) - h)]
+            vec![enabled * ((s + x) - h)]
         });
 
         Config {
             state,
+            square,
+            fourth,
+            preimage,
             constant,
             round,
-            instance,
-            preimage,
-            hash,
+            first,
             finish,
+            instance,
         }
     }
 
@@ -154,53 +204,44 @@ impl Circuit<Fp> for MimcPreimageCircuit {
             Some(x) => Value::known(x),
             None => Value::unknown(),
         };
-        let hash = Value::known(self.statement.hash);
 
-        let hash_cell = layouter.assign_region(
+        layouter.assign_region(
             || "mimc",
             |mut region| {
                 let mut state = x;
-                let first_state = region.assign_advice(|| "state", config.state, 0, || state)?;
 
-                for (row, constant) in params.round_constants.iter().enumerate() {
+                for row in 0..=rounds {
+                    region.assign_advice(|| "preimage", config.preimage, row, || x)?;
+                    region.assign_advice(|| "state", config.state, row, || state)?;
+
+                    if row == 0 {
+                        config.first.enable(&mut region, row)?;
+                    }
+                    if row == rounds {
+                        config.finish.enable(&mut region, row)?;
+                        break;
+                    }
+
+                    config.round.enable(&mut region, row)?;
                     region.assign_fixed(
                         || "constant",
                         config.constant,
                         row,
-                        || Value::known(*constant),
+                        || Value::known(params.round_constants[row]),
                     )?;
-                    config.round.enable(&mut region, row)?;
 
-                    let next = region.assign_advice(
-                        || "state",
-                        config.state,
-                        row + 1,
-                        || {
-                            let t1 = state + Value::known(*constant);
-                            let t2 = t1 * t1;
-                            let t4 = t2 * t2;
-                            t4 * t1
-                        },
-                    )?;
-                    state = next.value().copied();
+                    let shifted = state + Value::known(params.round_constants[row]);
+                    let squared = shifted * shifted;
+                    region.assign_advice(|| "square", config.square, row, || squared)?;
+                    region.assign_advice(|| "fourth", config.fourth, row, || squared * squared)?;
+
+                    state = squared * squared * shifted;
                 }
 
-                // The finish gate reads `cur`, so it sits on the row after the
-                // last round, where the state is E(x).
-                let finish_row = rounds;
-                let preimage_cell =
-                    region.assign_advice(|| "preimage", config.preimage, finish_row, || x)?;
-                let hash_cell =
-                    region.assign_advice(|| "hash", config.hash, finish_row, || hash)?;
-                config.finish.enable(&mut region, finish_row)?;
-
-                region.constrain_equal(first_state.cell(), preimage_cell.cell())?;
-
-                Ok(hash_cell)
+                Ok(())
             },
         )?;
 
-        layouter.constrain_instance(hash_cell.cell(), config.instance, 0)?;
         Ok(())
     }
 }
