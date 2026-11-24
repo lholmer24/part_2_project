@@ -51,19 +51,14 @@ Circuit synthesis is part of the measured work. `prepare_instance` runs before
 every warm-up and timed proof, so each `prove`/`verify` sample uses its own
 uniform native-field preimage and does not repeat a fixed statement.
 
+Bulletproofs and STARK have no per-system setup, so they write no `setup` rows.
+`proof_size_bytes` comes from the serialised proof after the prove timer stops.
+
 ## Universal parameters
 
-| System | Universal artefact | Handling |
-|:---|:---|:---|
-| Groth16 | None | Circuit-specific trusted setup |
-| PLONK | KZG public parameters | Build once at maximum degree; exclude from per-round setup |
-| Bulletproofs | Pedersen and Bulletproof generators | Build once at maximum size; exclude from per-round setup |
-| STARK | None | No setup |
-| Halo2 | IPA `Params` | Build once at maximum `k`; exclude from per-round setup |
-| Spartan | `SNARKGens` | Build once at maximum size; exclude from per-round setup |
-
-The one-time universal cost is reported in the text, not in the per-round CSV.
-It is generated in `System::prepare_universal` before the round loop.
+Groth16's setup is circuit-specific, and STARK has no setup. The other systems
+build reusable parameters in `System::prepare_universal` before the round loop.
+Their one-time cost is reported in the text, not in the per-round CSV.
 
 ## Groth16
 
@@ -82,9 +77,6 @@ constraint shape without evaluating the input or witness closures. In proving
 mode it builds the same shape and evaluates the witness. Setup runs once per
 circuit and is amortised; proving runs for every proof.
 
-`crates/circuits/src/groth16.rs` defines only `MimcPreimageCircuit`. The adapter in
-`crates/harness/src/systems/groth16.rs` calls arkworks directly.
-
 ## PLONK
 
 Library: `dusk-plonk` 0.24 over BLS12-381.
@@ -97,9 +89,6 @@ Library: `dusk-plonk` 0.24 over BLS12-381.
 | Timed prove | `Prover::prove`: circuit synthesis plus proof generation |
 | Timed verify | `Verifier::verify` |
 | Untimed | Proof serialisation and size measurement |
-
-`circuits::plonk::MimcPreimageCircuit` implements `dusk_plonk::Circuit`. The adapter is
-`crates/harness/src/systems/plonk.rs`.
 
 ## Bulletproofs
 
@@ -157,9 +146,6 @@ Library: `halo2_proofs` 0.4.1 over Pasta.
 | Timed verify | `verify_proof` |
 | Untimed | Proof serialisation and size measurement |
 
-`circuits::halo2::MimcPreimageCircuit` implements `halo2_proofs::plonk::Circuit`. The
-adapter is `crates/harness/src/systems/halo2.rs`.
-
 `circuits::halo2::params_k` synthesises the circuit with `MockProver` and
 returns the smallest domain exponent `k` that holds it. `prepare_universal`
 builds one `Params` per `k` up to the largest configuration and caches them;
@@ -171,8 +157,7 @@ parameters cannot be trimmed, because `Params::new(k)` derives the generator and
 Lagrange bases for that exact `k`, so one set per `k` is the equivalent.
 
 Halo2 timings remain a staircase in the domain `2^k`, not a function of the
-round count, because consecutive round counts can share a domain. Plot Halo2
-against `2^k` where the analysis compares it with PLONK.
+round count, because consecutive round counts can share a domain.
 
 The finish gate reads the public hash from the instance column on row `rounds`,
 so the instance vector has length `rounds + 1`. Building it from the reference
@@ -197,8 +182,7 @@ preprocessing: building the matrices and committing to the instance.
 `circuits::spartan::build_shape` builds the R1CS matrices; the adapter turns
 them into an `Instance` and calls `SNARK::encode`. Proving builds the witness
 and input assignments with `circuits::spartan::build_assignments` and calls
-`SNARK::prove`. The tests use `circuits::spartan::build_instance`, which
-combines both builders.
+`SNARK::prove`.
 
 `SNARKGens::new` pads `num_vars` itself but not `num_cons`. It passes
 `num_cons` to `R1CSCommitmentGens`, which calls `num_cons.log_2()`, while
@@ -212,60 +196,3 @@ set cannot serve a smaller instance. `prepare_universal` builds the set for the
 largest round count, and `prepare` caches the set for each smaller round count
 it sees. Building a set is untimed, like universal parameter generation for the
 other systems.
-
-## CSV meaning
-
-`phase=setup` means the timed per-circuit setup above. It includes circuit or
-instance synthesis, but not file loading, reference hashing or universal
-parameters.
-
-Systems with no per-circuit setup produce no `setup` rows:
-
-- Bulletproofs
-- STARK
-
-`proof_size_bytes` is recorded from the serialised proof after the prove timer
-stops.
-
-## Consistency
-
-Every system includes its own circuit, constraint, witness or trace synthesis in
-the timed phases. Systems whose libraries synthesise the circuit internally
-include that work automatically. Systems with explicit construction time the
-construction block.
-
-The phases therefore measure:
-
-- the project's circuit encoding,
-- the library's setup, prover and verifier,
-- the data transformation needed to call them.
-
-They exclude:
-
-- file I/O,
-- the reference MiMC hash,
-- universal parameters,
-- serialisation and deserialisation.
-
-## Circuit layout
-
-One crate, `crates/circuits`, holds the circuit, AIR or constraint layout for
-every system. Each system is one module and one file. The crate holds no setup,
-prove or verify wrapper. The harness adapter calls the proof-system library
-directly, so each timed call is visible in one adapter method.
-
-The statement value is `mimc::Statement<F>`. Each system aliases
-`circuits::MimcPreimageCircuit<F>` with its native field, then implements its
-own proof-system trait.
-
-Bulletproofs keeps its R1CS builder next to the circuit. STARK and Spartan
-keep their trace and matrix builders next to their circuits. Every adapter is
-registered in `harness::systems()`.
-
-A new system follows the same pattern:
-
-1. Add `crates/circuits/src/<system>.rs` and declare it in `lib.rs`.
-2. Add the builder for constraints, trace or matrices in the same file.
-3. Add an adapter in `crates/harness/src/systems/<system>.rs`.
-4. Implement `System`, with no timers in the adapter.
-5. Register the adapter in `harness::systems`.
