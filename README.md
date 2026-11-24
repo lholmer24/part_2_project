@@ -23,36 +23,26 @@ Part II project benchmarking Groth16, PLONK, Bulletproofs, STARK, Halo2 and Spar
 ## Commands
 
 ```sh
-cargo build
+# Install/setup
+rustup toolchain install 1.98.1 --component clippy --component rustfmt
+python3 -m venv python/.venv
+python/.venv/bin/pip install -e 'python[dev]'
+
+# Build
+cargo build --release
+
+# Test
 cargo test
-cargo test -p mimc --features extended-tests   # full sweep and Rust/Python agreement, about 3 min in debug
-cargo clippy --all-targets
-cargo fmt --all -- --check
-cargo run -p harness -- --system groth16 --rounds 8
+python/.venv/bin/python -m pytest python/tests
 
-cd python
-python3 -m venv .venv
-.venv/bin/pip install -e '.[dev]'
-.venv/bin/python -m pytest
-.venv/bin/python -m mimc --field bls12_381_fr --rounds 8 --x 42
-```
+# Test extended
+cargo test --release -p mimc -p circuits --features mimc/extended-tests,circuits/extended-tests
 
-`python3 python/generate_round_constants.py` regenerates the committed round constants.
+# Regenerate round constants (optional)
+python/.venv/bin/python python/generate_round_constants.py
 
-## Harness output
+# Generate full dataset
+cargo run --release -p harness
 
-The harness writes `results/benchmarks.csv` and `results/benchmarks.meta.json`.
-For each system it runs one untimed universal preparation, then, for each round
-count: an untimed loading and reference-hash step, `--setup-samples` timed
-setups if the system has a setup phase, `--warmup` untimed prove/verify pairs,
-and `--samples` timed prove/verify pairs.
-
-```
-system,field,rounds,phase,sample,time_ns,proof_size_bytes
-```
-
-- `phase` is `setup`, `prove` or `verify`.
-- `sample` is the repetition index within that phase. For `prove` and `verify`
-  it is also the proof-instance index and selects the preimage.
-- `time_ns` is the measured time in nanoseconds.
-- `proof_size_bytes` is present on `prove` rows only.
+# Plot full dataset
+python/.venv/bin/python -m analysis results/benchmarks.csv
