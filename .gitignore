@@ -127,3 +127,8 @@ desktop.ini
 # files: git add -f results/benchmarks.csv results/benchmarks.meta.json
 /results/*
 !/results/.gitkeep
+
+# Keep the generated explorer page, but not the profile points it references.
+!/results/profiles/
+/results/profiles/*
+!/results/profiles/index.html

@@ -9,7 +9,7 @@ from pathlib import Path
 from . import plots
 from .benchmarks import METRICS, Summary, load_dataset
 
-DEFAULT_OUTPUT = Path(__file__).resolve().parents[2] / "results"
+DEFAULT_OUTPUT = Path(__file__).resolve().parents[2] / "results" / "figures"
 
 
 def _parser() -> argparse.ArgumentParser:

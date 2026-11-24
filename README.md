@@ -11,14 +11,15 @@ Part II project benchmarking Groth16, PLONK, Bulletproofs, STARK, Halo2 and Spar
 | `crates/harness/` | Common `System` interface, one adapter per system, phase CSV and metadata output |
 | `params/PARAMS.md` | Field, exponent, round-count and security parameters |
 | `params/round_constants/` | Generated round constants, one file per field |
-| `python/` | Python MiMC reference, constant generator and analysis |
-| `results/` | Benchmark CSV and metadata output |
+| `python/` | Python MiMC reference, constant generator, analysis and profiling |
+| `results/` | Benchmark CSV, figures and interactive profiles |
 | `docs/` | Proposal and dissertation material |
 
 ## Requirements
 
 - Rust 1.98.1, pinned in `rust-toolchain.toml` and installed with rustup
 - Python 3.11 or newer
+- `perf` and `inferno` for the flame charts (optional)
 
 ## Commands
 
@@ -45,4 +46,7 @@ python/.venv/bin/python python/generate_round_constants.py
 cargo run --release -p harness
 
 # Plot full dataset
-python/.venv/bin/python -m analysis results/benchmarks.csv
+python/.venv/bin/python -m analysis results/benchmarks/benchmarks.csv
+
+# Generate the profiling dataset and explorer: results/profiles/index.html
+python/.venv/bin/python -m profiling --force

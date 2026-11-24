@@ -209,7 +209,9 @@ pub fn sweep_rounds() -> Vec<usize> {
 }
 
 pub fn default_output_path() -> PathBuf {
-    PathBuf::from(RESULTS_DIR).join("benchmarks.csv")
+    PathBuf::from(RESULTS_DIR)
+        .join("benchmarks")
+        .join("benchmarks.csv")
 }
 
 /// Registered systems. `PlaceholderSystem` is deliberately absent so test rows

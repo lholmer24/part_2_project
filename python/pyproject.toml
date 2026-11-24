@@ -17,7 +17,10 @@ analysis = [
 ]
 
 [tool.setuptools]
-packages = ["mimc", "analysis"]
+packages = ["mimc", "analysis", "profiling"]
+
+[tool.setuptools.package-data]
+profiling = ["index_template.html"]
 
 [tool.pytest.ini_options]
 minversion = "8.0"

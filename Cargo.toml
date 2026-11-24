@@ -2,6 +2,14 @@
 resolver = "2"
 members = ["crates/*"]
 
+# Profiling build with full debug info so a sampler resolves source lines and
+# inlined frames. Build with RUSTFLAGS=-Cforce-frame-pointers=y; python -m
+# profiling does this. Never used for the benchmark dataset.
+[profile.profiling]
+inherits = "release"
+debug = 2
+strip = false
+
 [workspace.package]
 version = "0.1.0"
 edition = "2021"

@@ -15,7 +15,7 @@ options:
   --setup-samples N     timed setups per configuration (default 10)
   --samples N           timed prove/verify pairs per configuration (default 10)
   --warmup N            warm-up prove/verify pairs per configuration (default 1)
-  --output PATH         CSV output path (default results/benchmarks.csv)
+  --output PATH         CSV output path (default results/benchmarks/benchmarks.csv)
   -h, --help            print this help";
 
 fn main() -> ExitCode {
