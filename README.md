@@ -49,4 +49,4 @@ cargo run --release -p harness
 python/.venv/bin/python -m analysis results/benchmarks/benchmarks.csv
 
 # Generate the profiling dataset and explorer: results/profiles/index.html
-python/.venv/bin/python -m profiling --force
+python/.venv/bin/python -m profiling
