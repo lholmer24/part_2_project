@@ -167,14 +167,10 @@ def capture(
             f"{samples} samples | {weight / 1e6:.1f} ms weighted | "
             f"{fmt_time(per_call_ns, 'per call')}"
         )
-        render_dir = tmp / "render"
-        render_dir.mkdir()
-        shutil.copy(outdir / "palette.map", render_dir / "palette.map")
         with (outdir / "chart.svg").open("w") as out:
             subprocess.run(
                 [
                     "inferno-flamegraph",
-                    "--cp",
                     "--deterministic",
                     "--width",
                     "2000",
@@ -192,7 +188,7 @@ def capture(
                     subtitle,
                     str(outdir / "folded.txt"),
                 ],
-                cwd=render_dir,
+                cwd=tmp,
                 check=True,
                 stdout=out,
             )

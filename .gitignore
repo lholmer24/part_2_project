@@ -128,7 +128,5 @@ desktop.ini
 /results/*
 !/results/.gitkeep
 
-# Keep the generated explorer page, but not the profile points it references.
-!/results/profiles/
-/results/profiles/*
-!/results/profiles/index.html
+# Generated profile points and the explorer page stay untracked.
+/results/profiles/
